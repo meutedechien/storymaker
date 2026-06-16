@@ -7,6 +7,10 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: monospace; background: #12121f; color: #ddd; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
+/* ── WiFi badge ── */
+.node.is-wifi { border-color: #56d6d6; }
+.node-wifi-badge { padding: 3px 8px 6px; font-size: 11px; color: #56d6d6; text-align:center; }
+
 /* ── Toolbar ── */
 #toolbar { display: flex; gap: 8px; padding: 8px 14px; background: #1a1a30; border-bottom: 1px solid #2a2a50; align-items: center; flex-shrink: 0; }
 #toolbar h1 { font-size: 13px; color: #e06c75; margin-right: auto; letter-spacing: 1px; }
@@ -664,7 +668,7 @@ function renderNodes() {
     const el = document.createElement('div');
     const gt = nodeGameType(n);
     const ba = nodeBuiltinAnim(n);
-    el.className = 'node' + (n.isEnd ? ' is-end' : '') + (gt ? ' is-pong' : '') + (ba ? ' is-anim' : '') + (n.aDevelopper ? ' is-draft' : '') + (n.id === selectedId ? ' selected' : '');
+    el.className = 'node' + (n.isEnd ? ' is-end' : '') + (gt ? ' is-pong' : '') + (ba ? ' is-anim' : '') + (n.aDevelopper ? ' is-draft' : '') + (n.wifiSSID ? ' is-wifi' : '') + (n.id === selectedId ? ' selected' : '');
     el.id = 'node-' + n.id;
     el.dataset.id = n.id;
     el.style.left = n.x + 'px';
@@ -690,6 +694,7 @@ function renderNodes() {
       inner += `<div class="node-anim-badge">${ai.emoji} ${ai.name}</div>`;
     } else if (n.isEnd) {
       inner += `<div class="node-endmsg">"${n.endMsg || '…'}"</div>`;
+    if (n.wifiSSID) inner += `<div class="node-wifi-badge">📶 ${n.wifiSSID}</div>`;
     } else {
       if (n.choices.length) {
         inner += `<div class="node-choices">` + n.choices.map(c =>
@@ -887,6 +892,21 @@ function renderEditPanel() {
     <button class="add-choice-btn" onclick="addChoice()">+ Ajouter un choix</button>
     `}
     `}
+  <div class="section-title">📶 WiFi</div>
+  <div style="display:flex;flex-direction:column;gap:5px">
+    <input type="text" maxlength="32" placeholder="Nom du réseau WiFi (SSID)..."
+      value="${esc(n.wifiSSID||'')}"
+      oninput="updateField('wifiSSID',this.value)"
+      style="font-size:11px">
+    ${n.wifiSSID ? `<div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#888">
+      <span>Durée</span>
+      <input type="number" min="1" max="60" value="${n.wifiDuration||5}"
+        oninput="updateField('wifiDuration',parseInt(this.value)||5)"
+        style="width:52px">
+      <span>secondes</span>
+      <button onclick="updateField('wifiSSID','');renderEditPanel()" style="color:#e06c75;border-color:#5a2a2a;background:#3a1a1a;font-size:10px;padding:2px 6px;margin-left:auto">✕ Retirer</button>
+    </div>` : ''}
+  </div>
   `;
   const prev = document.getElementById('bmp-preview');
   if (prev && n.bitmap) bmpDrawToCanvas(n.bitmap, prev);
@@ -965,7 +985,7 @@ let _uidCounter = 114;
 function addNode() {
   const id = 'NOEUD_' + (++_uidCounter);
   const wrapper = document.getElementById('canvas-wrapper');
-  nodes.push({ id, title:'NOUVEAU', text:'', choices:[], isEnd:false, endMsg:'', isPong:false, gameType:null, aDevelopper:true, bitmap:null, winMsg:'', loseMsg:'',
+  nodes.push({ id, title:'NOUVEAU', text:'', choices:[], isEnd:false, endMsg:'', isPong:false, gameType:null, aDevelopper:true, bitmap:null, winMsg:'', loseMsg:'', wifiSSID:'', wifiDuration:5,
     x: wrapper.scrollLeft + wrapper.clientWidth / 2 - 85,
     y: wrapper.scrollTop  + wrapper.clientHeight / 2 - 40 });
   renderAll(); selectNode(id); autoSave();
