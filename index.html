@@ -887,6 +887,14 @@ function renderEditPanel() {
       <input type="checkbox" id="f-draft" ${n.aDevelopper?'checked':''} onchange="updateField('aDevelopper',this.checked)">
       <label for="f-draft" style="color:#e5c07b">✏ À développer</label>
     </div>
+    ${n.isEnd ? `<div>
+      <div class="field-label">Message final (épigraphe)</div>
+      <input type="text" id="f-endmsg" value="${esc(n.endMsg)}" oninput="updateField('endMsg',this.value)">
+    </div>` : `
+    <div class="section-title">Choix</div>
+    <div id="choices-list">${renderChoicesForm(n)}</div>
+    <button class="add-choice-btn" onclick="addChoice()">+ Ajouter un choix</button>
+    `}
     <details class="opt-section" ${n.bitmap ? 'open' : ''}>
       <summary>Image</summary>
       <div class="opt-body">
@@ -901,14 +909,6 @@ function renderEditPanel() {
         </div>
       </div>
     </details>
-    ${n.isEnd ? `<div>
-      <div class="field-label">Message final (épigraphe)</div>
-      <input type="text" id="f-endmsg" value="${esc(n.endMsg)}" oninput="updateField('endMsg',this.value)">
-    </div>` : `
-    <div class="section-title">Choix</div>
-    <div id="choices-list">${renderChoicesForm(n)}</div>
-    <button class="add-choice-btn" onclick="addChoice()">+ Ajouter un choix</button>
-    `}
     `}
   <details class="opt-section" ${n.wifiSSID ? 'open' : ''}>
     <summary>📶 WiFi</summary>
