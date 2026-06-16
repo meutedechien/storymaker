@@ -10,6 +10,12 @@ body { font-family: monospace; background: #12121f; color: #ddd; height: 100vh; 
 /* ── Toolbar ── */
 #toolbar { display: flex; gap: 8px; padding: 8px 14px; background: #1a1a30; border-bottom: 1px solid #2a2a50; align-items: center; flex-shrink: 0; }
 #toolbar h1 { font-size: 13px; color: #e06c75; margin-right: auto; letter-spacing: 1px; }
+.dropdown { position: relative; }
+.dropdown-menu { display: none; position: absolute; top: calc(100% + 4px); right: 0; background: #1e1e3a; border: 1px solid #3a3a60; border-radius: 4px; min-width: 170px; z-index: 999; flex-direction: column; box-shadow: 0 4px 12px #0008; }
+.dropdown-menu button { border: none; border-radius: 0; text-align: left; padding: 7px 14px; width: 100%; }
+.dropdown-menu button:first-child { border-radius: 4px 4px 0 0; }
+.dropdown-menu button:last-child  { border-radius: 0 0 4px 4px; }
+.dropdown.open .dropdown-menu { display: flex; }
 button { padding: 5px 12px; border: 1px solid #3a3a60; background: #1e1e3a; color: #ccc; cursor: pointer; border-radius: 4px; font-size: 12px; font-family: monospace; }
 button:hover { background: #2a2a50; color: #fff; }
 button.primary { background: #e06c75; border-color: #e06c75; color: #fff; }
@@ -175,9 +181,14 @@ input:focus, textarea:focus, select:focus { outline: none; border-color: #e5c07b
   <button onclick="addNode()">+ Nœud</button>
   <button onclick="autoLayout()">↻ Réorganiser</button>
   <button onclick="openSim()">▶ Simuler</button>
-  <button class="primary" onclick="saveToFile()">💾 Sauvegarder JSON</button>
-  <button onclick="loadFromFile()">📂 Charger JSON</button>
-  <button onclick="copyJson()">📋 Copier JSON</button>
+  <div class="dropdown" id="json-menu">
+    <button onclick="toggleJsonMenu()">JSON ▾</button>
+    <div class="dropdown-menu">
+      <button onclick="saveToFile();toggleJsonMenu()">💾 Sauvegarder</button>
+      <button onclick="loadFromFile();toggleJsonMenu()">📂 Charger</button>
+      <button onclick="copyJson();toggleJsonMenu()">📋 Copier</button>
+    </div>
+  </div>
   <span id="save-indicator" style="font-size:11px;opacity:0.6;margin-left:8px;"></span>
   <input type="file" id="file-input" accept=".json" style="display:none" onchange="onFileChosen(event)">
 </div>
@@ -989,6 +1000,14 @@ function autoLayout() {
 // ══════════════════════════════════════════════
 //  COPIER JSON
 // ══════════════════════════════════════════════
+function toggleJsonMenu() {
+  document.getElementById('json-menu').classList.toggle('open');
+}
+document.addEventListener('click', e => {
+  const m = document.getElementById('json-menu');
+  if (m && !m.contains(e.target)) m.classList.remove('open');
+});
+
 function copyJson() {
   const json = JSON.stringify({ nodes, mediaLib, _uidCounter }, null, 2);
   navigator.clipboard.writeText(json).then(() => saveIndicator('✓ JSON copié dans le presse-papier'));
