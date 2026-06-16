@@ -722,11 +722,11 @@ function renderArrows() {
   styles.forEach((s, i) => {
     const m = document.createElementNS('http://www.w3.org/2000/svg','marker');
     m.setAttribute('id', 'arr-' + i);
-    m.setAttribute('markerWidth','6'); m.setAttribute('markerHeight','6');
-    m.setAttribute('refX','5'); m.setAttribute('refY','3');
+    m.setAttribute('markerWidth','8'); m.setAttribute('markerHeight','8');
+    m.setAttribute('refX','7'); m.setAttribute('refY','4');
     m.setAttribute('orient','auto');
     const poly = document.createElementNS('http://www.w3.org/2000/svg','polygon');
-    poly.setAttribute('points','0 0, 6 3, 0 6');
+    poly.setAttribute('points','0 0, 8 4, 0 8');
     poly.setAttribute('fill', s.color);
     m.appendChild(poly);
     defs.appendChild(m);
@@ -737,16 +737,30 @@ function renderArrows() {
     n.choices.forEach((c, ci) => {
       const target = nodeById(c.to);
       if (!target) return;
-      const s   = styles[ci % styles.length];
-      const sx  = n.x + 170;
-      const sy  = n.y + 30 + ci * 16;
-      const tx  = target.x;
-      const ty  = target.y + 20;
-      const mx  = (sx + tx) / 2;
+      const s  = styles[ci % styles.length];
+      const NW = 170, NH = 50;
+
+      // Point de départ : côté droit du nœud source
+      const sx = n.x + NW;
+      const sy = n.y + 28 + ci * 16;
+
+      // Centre du nœud cible
+      const tcx = target.x + NW / 2;
+      const tcy = target.y + NH / 2;
+
+      // Choisir le bord d'arrivée le plus proche du point de départ
+      const candidates = [
+        { tx: target.x,        ty: tcy,            cpx1: sx + 60, cpy1: sy, cpx2: target.x - 60,   cpy2: tcy },   // gauche
+        { tx: target.x + NW,   ty: tcy,            cpx1: sx + 60, cpy1: sy, cpx2: target.x + NW + 60, cpy2: tcy }, // droite
+        { tx: tcx,             ty: target.y,        cpx1: sx + 40, cpy1: sy, cpx2: tcx,              cpy2: target.y - 60 }, // haut
+        { tx: tcx,             ty: target.y + NH,   cpx1: sx + 40, cpy1: sy, cpx2: tcx,              cpy2: target.y + NH + 60 }, // bas
+      ];
+      const best = candidates.reduce((a, b) =>
+        Math.hypot(b.tx - sx, b.ty - sy) < Math.hypot(a.tx - sx, a.ty - sy) ? b : a
+      );
 
       const path = document.createElementNS('http://www.w3.org/2000/svg','path');
-      const d = `M${sx},${sy} C${mx},${sy} ${mx},${ty} ${tx},${ty}`;
-      path.setAttribute('d', d);
+      path.setAttribute('d', `M${sx},${sy} C${best.cpx1},${best.cpy1} ${best.cpx2},${best.cpy2} ${best.tx},${best.ty}`);
       path.setAttribute('stroke', s.color);
       path.setAttribute('stroke-width', s.width);
       path.setAttribute('fill', 'none');
