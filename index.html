@@ -1,0 +1,1692 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Éditeur — Histoire Interactive</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: monospace; background: #12121f; color: #ddd; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+/* ── Toolbar ── */
+#toolbar { display: flex; gap: 8px; padding: 8px 14px; background: #1a1a30; border-bottom: 1px solid #2a2a50; align-items: center; flex-shrink: 0; }
+#toolbar h1 { font-size: 13px; color: #e06c75; margin-right: auto; letter-spacing: 1px; }
+button { padding: 5px 12px; border: 1px solid #3a3a60; background: #1e1e3a; color: #ccc; cursor: pointer; border-radius: 4px; font-size: 12px; font-family: monospace; }
+button:hover { background: #2a2a50; color: #fff; }
+button.primary { background: #e06c75; border-color: #e06c75; color: #fff; }
+button.primary:hover { background: #c0525e; }
+
+/* ── Main layout ── */
+#main { display: flex; flex: 1; overflow: hidden; }
+
+/* ── Canvas ── */
+#canvas-wrapper { flex: 1; position: relative; overflow: auto; cursor: default;
+  background-color: #12121f;
+  background-image: radial-gradient(circle, #2a2a40 1px, transparent 1px);
+  background-size: 24px 24px; }
+#svg-layer { position: absolute; top: 0; left: 0; pointer-events: none; overflow: visible; }
+#canvas  { position: absolute; top: 0; left: 0; width: 6000px; height: 4000px; }
+
+/* ── Nodes ── */
+.node { position: absolute; width: 170px; border-radius: 6px; border: 1.5px solid #3a3a60;
+  background: #1a1a30; cursor: grab; user-select: none; transition: border-color .15s, box-shadow .15s; }
+.node:hover  { border-color: #61afef; box-shadow: 0 0 8px #61afef44; }
+.node.active { border-color: #e06c75; box-shadow: 0 0 10px #e06c7555; cursor: grabbing; }
+.node.selected { border-color: #e5c07b; box-shadow: 0 0 10px #e5c07b55; }
+.node.is-end  { border-color: #98c379; }
+.node.is-pong { border-color: #c678dd; }
+.node.is-anim { border-color: #61afef; }
+.node-anim-badge { padding: 4px 8px 8px; font-size: 11px; color: #61afef; text-align: center; }
+.node-header { padding: 5px 8px; border-radius: 5px 5px 0 0; background: #22223a;
+  font-size: 11px; font-weight: bold; display: flex; justify-content: space-between; gap: 4px; }
+.node-header .id  { color: #888; font-size: 10px; font-weight: normal; }
+.node-title { flex: 1; color: #e5c07b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.node-text { padding: 4px 8px 4px; font-size: 10px; color: #9a9a9a; line-height: 1.4;
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  border-bottom: 1px solid #2a2a50; min-height: 28px; }
+.node-choices { padding: 4px 8px 6px; }
+.choice-pill { font-size: 10px; padding: 2px 0; color: #61afef; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; }
+.choice-pill::before { content: "→ "; color: #4a4a70; }
+.node-endmsg { padding: 3px 8px 6px; font-size: 10px; color: #98c379; font-style: italic; }
+.node-pong-badge { padding: 4px 8px 8px; font-size: 11px; color: #c678dd; text-align: center; }
+.node-draft-badge { padding: 2px 8px; font-size: 10px; color: #e5c07b; background:#2a2200; border-bottom:1px solid #3a3200; }
+.node.is-draft { border-color: #e5c07b; }
+
+/* ── Edit panel ── */
+#edit-panel { width: 290px; background: #1a1a30; border-left: 1px solid #2a2a50;
+  display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; }
+#edit-panel-header { background: #22223a; border-bottom: 1px solid #2a2a50; display:flex; flex-direction:column; }
+.panel-tabs { display:flex; }
+.panel-tab { flex:1; padding:9px 6px; font-size:11px; text-align:center; cursor:pointer;
+  color:#666; background:none; border:none; border-bottom:2px solid transparent; font-family:monospace; letter-spacing:.5px; }
+.panel-tab:hover { color:#aaa; }
+.panel-tab.active { color:#e06c75; border-bottom-color:#e06c75; }
+#node-action-row { display:none; padding:8px 10px; gap:6px; border-top:1px solid #2a2a50; }
+#node-action-row button { flex:1; font-size:11px; padding:5px 0; }
+#delete-node-btn { background:#3a1a1a; border-color:#e06c75; color:#e06c75; }
+#delete-node-btn:hover { background:#e06c75; color:#fff; }
+#media-panel { flex:1; overflow-y:auto; padding:12px; display:none; flex-direction:column; gap:10px; }
+.media-tabs { display:flex; gap:4px; margin-bottom:2px; }
+.media-tab { padding:4px 10px; font-size:10px; border-radius:3px; cursor:pointer; color:#666; background:none; border:1px solid #2a2a50; font-family:monospace; }
+.media-tab.active { color:#61afef; border-color:#61afef; background:#0a1a2a; }
+.media-item { display:flex; align-items:center; gap:8px; background:#12121f; border:1px solid #2a2a50; padding:7px 8px; border-radius:4px; }
+.media-item canvas { flex-shrink:0; image-rendering:pixelated; }
+.media-item-name { flex:1; font-size:11px; color:#ddd; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.media-item-btns { display:flex; gap:4px; }
+.media-item-btns button { font-size:10px; padding:3px 7px; }
+.media-anim-frames { display:flex; gap:6px; flex-wrap:wrap; padding-top:4px; }
+.media-anim-frame { cursor:pointer; border:1px solid #2a2a50; border-radius:2px; image-rendering:pixelated; display:block; }
+.media-anim-frame:hover { border-color:#61afef; }
+.media-empty { font-size:11px; color:#444; text-align:center; padding:16px 0; }
+.media-game-item { display:flex; align-items:center; gap:10px; background:#12121f; border:1px solid #c678dd33; padding:8px 10px; border-radius:4px; }
+.media-game-badge { font-size:20px; }
+.media-game-info { flex:1; }
+.media-game-info strong { font-size:11px; color:#c678dd; display:block; }
+.media-game-info span { font-size:10px; color:#555; }
+#edit-hint { padding: 30px 16px; color: #444; font-size: 12px; text-align: center; line-height: 1.8; }
+#edit-form { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.field-label { font-size: 10px; color: #666; margin-bottom: 3px; text-transform: uppercase; letter-spacing: .5px; }
+input[type=text], textarea, select { width: 100%; background: #12121f; border: 1px solid #2a2a50;
+  color: #ddd; padding: 5px 8px; font-family: monospace; font-size: 12px; border-radius: 3px; }
+textarea { resize: vertical; min-height: 55px; }
+input:focus, textarea:focus, select:focus { outline: none; border-color: #e5c07b; }
+.checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #aaa; }
+.checkbox-row input { width: auto; accent-color: #98c379; }
+.section-title { font-size: 11px; color: #61afef; border-bottom: 1px solid #2a2a50; padding-bottom: 4px; margin-top: 4px; }
+.choice-block { background: #12121f; border: 1px solid #2a2a50; border-radius: 4px; padding: 8px; display: flex; flex-direction: column; gap: 5px; }
+.choice-block .row { display: flex; gap: 4px; align-items: center; }
+.choice-block input { flex: 1; }
+.choice-block select { flex: 1; }
+.del-choice { background: #3a1a1a; border: 1px solid #5a2a2a; color: #e06c75; padding: 3px 7px; border-radius: 3px; cursor: pointer; flex-shrink: 0; font-size: 11px; }
+.del-choice:hover { background: #e06c75; color: #fff; }
+.add-choice-btn { font-size: 11px; border: 1px dashed #2a2a50; background: none; color: #555;
+  width: 100%; padding: 5px; cursor: pointer; border-radius: 3px; }
+.add-choice-btn:hover { border-color: #61afef; color: #61afef; }
+.choice-arrows { display:flex; flex-direction:column; gap:1px; flex-shrink:0; }
+.choice-arrows button { padding:1px 5px; font-size:10px; border-color:#2a2a50; color:#666; line-height:1.2; }
+.choice-arrows button:hover:not(:disabled) { color:#fff; }
+.choice-arrows button:disabled { opacity:0.2; cursor:default; }
+
+/* ── Simulateur ── */
+#sim-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.8); z-index:100;
+  align-items:center; justify-content:center; }
+#sim-modal.open { display:flex; }
+#sim-box { background:#1a1a30; border:1px solid #3a3a60; border-radius:10px;
+  padding:20px; display:flex; flex-direction:column; align-items:center; gap:16px; min-width:320px; }
+#sim-box h3 { color:#e06c75; font-size:13px; letter-spacing:1px; align-self:stretch;
+  display:flex; justify-content:space-between; align-items:center; }
+#sim-close { background:none; border:none; color:#666; font-size:16px; cursor:pointer; padding:2px 6px; }
+#sim-close:hover { color:#fff; }
+#sim-oled-wrap { background:#000; border-radius:6px; padding:10px 8px;
+  box-shadow: 0 0 0 2px #333, 0 0 20px rgba(100,180,255,0.15); }
+#sim-screen { width:100%; height:100%; overflow:hidden; display:flex; flex-direction:column; }
+.sim-line { font-family:'Courier New',monospace; font-size:14px; line-height:20px; color:#fff;
+  text-shadow:0 0 4px rgba(255,255,255,0.6); white-space:pre; height:20px; overflow:hidden; }
+#sim-btns { display:flex; gap:10px; align-items:center; }
+#sim-btns button { font-size:18px; padding:8px 16px; border-radius:6px; }
+#sim-mode { font-size:11px; color:#555; text-align:center; }
+#sim-node-name { font-size:11px; color:#e5c07b; }
+.node.sim-active { border-color:#c678dd !important; box-shadow:0 0 14px #c678dd88 !important; }
+.node-bmp-thumb { display:block; width:100%; aspect-ratio:4/1; image-rendering:pixelated; border-bottom:1px solid #2a2a50; }
+
+/* ── Éditeur bitmap ── */
+#bitmap-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:200;
+  align-items:center; justify-content:center; }
+#bitmap-modal.open { display:flex; }
+#bitmap-box { background:#1a1a30; border:1px solid #3a3a60; border-radius:10px;
+  padding:18px; display:flex; flex-direction:column; gap:12px; }
+#bitmap-header { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:6px; }
+#bitmap-header h3 { color:#e06c75; font-size:13px; letter-spacing:1px; text-align:center; white-space:nowrap; }
+#bmp-hdr-left  { display:flex; gap:5px; align-items:center; }
+#bmp-hdr-right { display:flex; gap:5px; align-items:center; justify-content:flex-end; }
+#bmp-transforms button.active-xform { border-color:#e5c07b; color:#e5c07b; }
+#bmp-crop-panel { background:#0d0d1a; border:1px solid #2a2a50; border-radius:4px; padding:8px 10px;
+  display:flex; flex-direction:column; gap:6px; }
+#bmp-crop-area { position:relative; display:inline-block; cursor:crosshair; user-select:none; }
+#bmp-crop-sel { position:absolute; border:2px solid #e06c75; box-shadow:0 0 0 9999px rgba(0,0,0,.55); pointer-events:none; }
+#bitmap-toolbar { display:flex; gap:8px; align-items:center; }
+#bitmap-toolbar label { font-size:12px; color:#aaa; display:flex; align-items:center; gap:4px; cursor:pointer; }
+#bitmap-toolbar input[type=radio] { accent-color:#61afef; }
+#bmp-canvas { display:block; cursor:crosshair; border:1px solid #3a3a60; border-radius:3px; image-rendering:pixelated; width:100%; max-width:512px; height:auto; }
+#bitmap-info { font-size:10px; color:#444; text-align:center; }
+#bmp-preview-box { text-align:center; }
+#bmp-preview { display:block; margin:4px auto; border:1px solid #333; image-rendering:pixelated; width:256px; height:64px; }
+#bmp-transforms { display:flex; gap:4px; align-items:center; padding:4px 0; border-top:1px solid #2a2a50; margin-top:2px; flex-wrap:wrap; }
+#bmp-transforms button { font-size:11px; padding:3px 8px; }
+#bmp-transforms span { font-size:10px; color:#444; }
+#bmp-import-settings { background:#0d0d1a; border:1px solid #2a2a50; border-radius:4px; padding:8px 10px; display:flex; flex-direction:column; gap:6px; }
+#bmp-import-settings > div:first-child { font-size:10px; color:#555; font-weight:bold; letter-spacing:.5px; }
+.bmp-srow { display:flex; align-items:center; gap:5px; font-size:10px; color:#aaa; }
+.bmp-srow label { display:flex; align-items:center; gap:3px; cursor:pointer; }
+.bmp-srow select { background:#12121f; border:1px solid #2a2a50; color:#ddd; font-size:10px; padding:2px 4px; border-radius:2px; flex:1; }
+.bmp-srow input[type=range] { flex:1; min-width:60px; accent-color:#61afef; }
+.bmp-srow span { color:#61afef; font-size:10px; min-width:22px; text-align:right; }
+
+/* ── Sim bitmap overlay ── */
+#sim-oled-inner { position:relative; width:378px; height:80px; }
+#sim-bmp-view { display:none; position:absolute; top:0; left:0; width:100%; height:100%; image-rendering:pixelated; }
+
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <h1>HISTOIRE INTERACTIVE — ÉDITEUR</h1>
+  <button onclick="addNode()">+ Nœud</button>
+  <button onclick="autoLayout()">↻ Réorganiser</button>
+  <button onclick="openSim()">▶ Simuler</button>
+  <button class="primary" onclick="saveToFile()">💾 Sauvegarder JSON</button>
+  <button onclick="loadFromFile()">📂 Charger JSON</button>
+  <button onclick="copyJson()">📋 Copier JSON</button>
+  <span id="save-indicator" style="font-size:11px;opacity:0.6;margin-left:8px;"></span>
+  <input type="file" id="file-input" accept=".json" style="display:none" onchange="onFileChosen(event)">
+</div>
+
+<div id="main">
+  <div id="canvas-wrapper" id="canvas-wrapper">
+    <svg id="svg-layer" width="3000" height="2000"></svg>
+    <div id="canvas"></div>
+  </div>
+  <div id="edit-panel">
+    <div id="edit-panel-header">
+      <div class="panel-tabs">
+        <button class="panel-tab active" id="tab-node" onclick="switchPanel('node')">Nœud</button>
+        <button class="panel-tab" id="tab-media" onclick="switchPanel('media')">Médias</button>
+      </div>
+      <div id="node-action-row">
+        <button id="sim-from-btn" onclick="openSimFrom(selectedId)" style="background:#1a2a1a;border-color:#4a8a4a;color:#98c379">▶ Simuler</button>
+        <button id="duplicate-node-btn" onclick="duplicateSelected()">Dupliquer</button>
+        <button id="delete-node-btn" onclick="deleteSelected()">Supprimer</button>
+      </div>
+    </div>
+    <div id="edit-hint">Cliquez sur un nœud<br>pour l'éditer</div>
+    <div id="edit-form" style="display:none"></div>
+    <div id="media-panel"></div>
+  </div>
+</div>
+
+<div id="bitmap-modal">
+  <div id="bitmap-box">
+
+    <!-- ── En-tête 3 colonnes ── -->
+    <div id="bitmap-header">
+      <div id="bmp-hdr-left">
+        <button onclick="bmpClear()" title="Vider le canvas">Effacer</button>
+        <button onclick="bmpInvert()" title="Inverser tous les pixels">Inverser</button>
+        <button class="primary" onclick="bmpImport()">📂 Importer</button>
+        <input type="file" id="bmp-file-input" accept="image/*" style="display:none" onchange="onBmpFileChosen(event)">
+      </div>
+      <h3>✎ ÉDITEUR D'IMAGE</h3>
+      <div id="bmp-hdr-right">
+        <button class="primary" onclick="bmpSave()">💾 Enregistrer</button>
+        <button onclick="closeBitmap()" style="background:none;border:none;color:#666;font-size:18px;padding:0 4px">✕</button>
+      </div>
+    </div>
+
+    <!-- ── Outils de dessin + transformations ── -->
+    <div id="bitmap-toolbar">
+      <label><input type="radio" name="bmp-tool" value="draw" checked> Dessiner</label>
+      <label><input type="radio" name="bmp-tool" value="erase"> Effacer</label>
+      <span style="font-size:10px;color:#333;margin:0 4px">|</span>
+      <div id="bmp-transforms">
+        <span style="font-size:10px;color:#555">Transformer :</span>
+        <button id="xbtn-fh" onclick="bmpFlipH()" title="Miroir horizontal">⇔ H</button>
+        <button id="xbtn-fv" onclick="bmpFlipV()" title="Miroir vertical">⇕ V</button>
+        <button onclick="bmpRotate(90)"  title="Rotation 90° horaire">↻ 90°</button>
+        <button onclick="bmpRotate(180)" title="Rotation 180°">⇄ 180°</button>
+        <button onclick="bmpRotate(270)" title="Rotation 90° anti-horaire">↺ 90°</button>
+      </div>
+    </div>
+
+    <!-- ── Canvas 128×32 × 4 ── -->
+    <div style="display:flex;gap:6px;align-items:center">
+      <input type="text" id="bmp-url-input" placeholder="Coller une URL d'image..."
+        style="flex:1;background:#0d0d1a;color:#ddd;border:1px solid #3a3a60;border-radius:4px;padding:4px 8px;font-size:12px;font-family:monospace"
+        onkeydown="if(event.key==='Enter') bmpFromUrl()">
+      <button onclick="bmpFromUrl()">Charger</button>
+    </div>
+    <canvas id="bmp-canvas" width="512" height="128"></canvas>
+
+    <!-- ── Réglages import ── -->
+    <div id="bmp-import-settings">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+          <span>RÉGLAGES IMPORT</span>
+          <span id="bmp-src-status" style="font-size:9px;color:#555;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px" title="">— aucune source</span>
+        </div>
+        <div class="bmp-srow">
+          <label style="min-width:28px">Fond</label>
+          <label><input type="radio" name="bmp-bg" value="black" checked onchange="bmpSyncSettings()"> Noir</label>
+          <label><input type="radio" name="bmp-bg" value="white" onchange="bmpSyncSettings()"> Blanc</label>
+        </div>
+        <div class="bmp-srow">
+          <label><input type="checkbox" id="bmp-invert-cb" onchange="bmpSyncSettings()"> Inverser couleurs</label>
+        </div>
+        <div class="bmp-srow">
+          <label style="min-width:36px">Seuil</label>
+          <input type="range" id="bmp-threshold" min="0" max="255" value="128"
+            oninput="document.getElementById('bmp-thr-val').textContent=this.value; bmpSyncSettings()">
+          <span id="bmp-thr-val">128</span>
+        </div>
+        <div class="bmp-srow">
+          <label style="min-width:36px">Tramage</label>
+          <select id="bmp-dither" onchange="bmpSyncSettings()">
+            <option value="none">Binaire</option>
+            <option value="bayer">Bayer 4×4</option>
+            <option value="floyd">Floyd-Steinberg</option>
+            <option value="atkinson">Atkinson</option>
+          </select>
+        </div>
+        <div class="bmp-srow">
+          <label style="min-width:36px">Échelle</label>
+          <select id="bmp-scale" onchange="bmpSyncSettings()">
+            <option value="fit">Ajuster hauteur</option>
+            <option value="fill">Ajuster largeur</option>
+            <option value="stretch">Étirer</option>
+            <option value="crop" selected>Recadrer</option>
+          </select>
+        </div>
+        <!-- Recadrage (visible uniquement en mode Recadrer) -->
+        <div id="bmp-crop-sliders" style="display:flex;flex-direction:column;gap:4px">
+          <div class="bmp-srow">
+            <label style="min-width:14px">X</label>
+            <input type="range" id="bmp-crop-x" min="0" max="100" value="50"
+              oninput="bmpSyncSettings()">
+          </div>
+          <div class="bmp-srow">
+            <label style="min-width:14px">Y</label>
+            <input type="range" id="bmp-crop-y" min="0" max="100" value="50"
+              oninput="bmpSyncSettings()">
+          </div>
+          <div class="bmp-srow">
+            <label style="min-width:14px">Zoom</label>
+            <input type="range" id="bmp-crop-zoom" min="5" max="400" value="100"
+              oninput="document.getElementById('bmp-crop-zoom-val').textContent=Math.round(this.value)+'%'; bmpSyncSettings()">
+            <span id="bmp-crop-zoom-val">100%</span>
+          </div>
+        </div>
+        <button onclick="bmpResetSettings()" style="font-size:10px;padding:3px 6px;margin-top:2px;width:100%;color:#e5c07b;border-color:#3a3a20;background:#1a1a0a">↺ Réinitialiser les réglages</button>
+    </div>
+
+    <div id="bitmap-info">128 × 32 px · cliquer/glisser pour dessiner · clic droit = effacer</div>
+  </div>
+</div>
+
+<div id="sim-modal">
+  <div id="sim-box">
+    <h3>▶ SIMULATION OLED
+      <span style="display:flex;gap:10px;align-items:center">
+        <span id="sim-node-name"></span>
+        <button id="sim-close" onclick="closeSim()">✕</button>
+      </span>
+    </h3>
+    <div id="sim-oled-wrap">
+      <div id="sim-oled-inner">
+        <canvas id="sim-bmp-view" width="128" height="32"></canvas>
+        <div id="sim-screen">
+          <div class="sim-line">&nbsp;</div>
+          <div class="sim-line">&nbsp;</div>
+          <div class="sim-line">&nbsp;</div>
+          <div class="sim-line">&nbsp;</div>
+        </div>
+      </div>
+    </div>
+    <div id="sim-btns">
+      <button onclick="simEncoder(-1)" title="Tourner vers le haut">↑</button>
+      <button onclick="simButton()" title="Appuyer sur le bouton" style="background:#2a2a50;border-color:#61afef;color:#61afef">● OK</button>
+      <button onclick="simEncoder(1)" title="Tourner vers le bas">↓</button>
+    </div>
+    <div id="sim-mode">↑ ↓ molette &nbsp;·&nbsp; Entrée = bouton</div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════
+//  DONNÉES DE L'HISTOIRE (chargées depuis localStorage ou JSON)
+// ══════════════════════════════════════════════
+let nodes = [];
+let mediaLib = { images: [], animations: [] };
+let activePanel = 'node';
+let activeMediaSubTab = 'images';
+
+const GAMES = [
+  { id:'PONG',    emoji:'🏓', name:'Pong',
+    desc:'Raquette vs IA — premier à 3 points gagne' },
+  { id:'DINO',    emoji:'🦕', name:'Dino Runner',
+    desc:'Sautez par-dessus les cactus — vitesse croissante' },
+  { id:'LOTERIE', emoji:'🎰', name:'Loterie',
+    desc:'Tirage aléatoire parmi une liste de noms (vierge — à configurer)' },
+  { id:'DES',     emoji:'🎲', name:'Dés',
+    desc:'Lance un ou plusieurs dés — affiche le résultat en pips sur l\'OLED' },
+  { id:'RACING',  emoji:'🚗', name:'Course',
+    desc:'Voiture défilant à l\'horizontal — tourner ↑↓ pour éviter les véhicules' },
+  { id:'RYTHME',  emoji:'🎵', name:'Rythme',
+    desc:'Flèches ↑↓ défilant de droite à gauche — tourner la molette au bon moment' },
+  { id:'FLAPPY',  emoji:'🐦', name:'Flappy Bird',
+    desc:'Oiseau qui tombe — tourner la molette ↑ pour battre des ailes, passer dans les tuyaux' },
+];
+function gameInfo(id) {
+  return GAMES.find(g => g.id === id)
+    || BUILTIN_ANIMS.find(a => a.id === id)
+    || { emoji:'🎮', name:id, desc:'' };
+}
+function nodeGameType(n) { return n.gameType || (n.isPong ? 'PONG' : null); }
+
+const BUILTIN_ANIMS = [
+  { id:'ANIM_STARFIELD', emoji:'✨', name:'Starfield',  desc:'Tunnel d\'étoiles convergeant vers l\'observateur' },
+  { id:'ANIM_CERCLES',   emoji:'⭕', name:'Cercles',    desc:'Cercles concentriques en expansion' },
+  { id:'ANIM_ORBITES',   emoji:'🔲', name:'Orbites',    desc:'Carrés en orbite elliptique' },
+  { id:'ANIM_VAGUES',    emoji:'〰️', name:'Vagues',     desc:'Double vague sinusoïdale' },
+  { id:'ANIM_BALLE',     emoji:'🎱', name:'Balle',      desc:'Balle rebondissante avec traîne lumineuse' },
+  { id:'ANIM_PENTAGONE', emoji:'⬠', name:'Pentagone',  desc:'Pentagone déformé en rotation' },
+  { id:'ANIM_EGALISEUR', emoji:'📊', name:'Égaliseur',  desc:'Barres de spectre animées' },
+  { id:'ANIM_ADN',       emoji:'🧬', name:'ADN',        desc:'Hélice double brin animée' },
+  { id:'ANIM_DVD',       emoji:'📀', name:'DVD',        desc:'Logo DVD rebondissant (screensaver)' },
+];
+function builtinAnimInfo(id) { return BUILTIN_ANIMS.find(a => a.id === id) || { emoji:'🎬', name:id, desc:'' }; }
+function nodeBuiltinAnim(n) { return n.builtinAnim || null; }
+
+function switchPanel(tab) {
+  activePanel = tab;
+  document.getElementById('tab-node').classList.toggle('active', tab === 'node');
+  document.getElementById('tab-media').classList.toggle('active', tab === 'media');
+  const hint = document.getElementById('edit-hint');
+  const form = document.getElementById('edit-form');
+  const mp   = document.getElementById('media-panel');
+  if (tab === 'node') {
+    hint.style.display = selectedId ? 'none' : '';
+    form.style.display = selectedId ? 'flex' : 'none';
+    mp.style.display = 'none';
+  } else {
+    hint.style.display = 'none';
+    form.style.display = 'none';
+    mp.style.display = 'flex';
+    renderMediaPanel();
+  }
+  renderEditPanel();
+}
+
+function switchMediaTab(tab) {
+  activeMediaSubTab = tab;
+  renderMediaPanel();
+}
+
+function renderMediaPanel() {
+  const panel = document.getElementById('media-panel');
+  const tabs = ['images','animations','games'].map(t =>
+    `<button class="media-tab${activeMediaSubTab===t?' active':''}" onclick="switchMediaTab('${t}')">${
+      t==='images'?'Images':t==='animations'?'Animations':'Jeux'}</button>`).join('');
+
+  let content = '';
+
+  if (activeMediaSubTab === 'images') {
+    const items = mediaLib.images.map(img => `
+      <div class="media-item">
+        <canvas width="128" height="32" style="width:64px;height:16px" data-imgid="${img.id}"></canvas>
+        <span class="media-item-name">${img.id}</span>
+        <div class="media-item-btns">
+          <button onclick="mediaEditImage('${img.id}')" title="Éditer pixels">✎</button>
+          <button onclick="mediaRenameImage('${img.id}')" title="Renommer">Aa</button>
+          <button onclick="mediaAssignToNode('${img.id}')" title="Assigner au nœud sélectionné" style="color:#98c379;border-color:#98c37966">▶</button>
+          <button onclick="mediaDeleteImage('${img.id}')" style="color:#e06c75;border-color:#e06c7566">✕</button>
+        </div>
+      </div>`).join('');
+    content = (items || '<div class="media-empty">Aucune image dans la bibliothèque</div>')
+      + `<button onclick="mediaNewImage()" class="add-choice-btn">+ Nouvelle image</button>`;
+
+  } else if (activeMediaSubTab === 'animations') {
+    const builtinItems = BUILTIN_ANIMS.map(a => `
+      <div class="media-game-item">
+        <span class="media-game-badge">${a.emoji}</span>
+        <div class="media-game-info">
+          <strong>${a.name}</strong>
+          <span>${a.desc}</span>
+        </div>
+        <button onclick="mediaAssignBuiltinAnim('${a.id}')" style="color:#61afef;border-color:#61afef66;flex-shrink:0">▶ Assigner</button>
+      </div>`).join('');
+    const customItems = mediaLib.animations.map(anim => {
+      const fc = anim.frames.length;
+      const frames = anim.frames.map((f, fi) =>
+        `<canvas class="media-anim-frame" width="128" height="32" style="width:48px;height:12px"
+          data-animid="${anim.id}" data-fi="${fi}"
+          onclick="mediaEditAnimFrame('${anim.id}',${fi})" title="Frame ${fi+1}/${fc}"></canvas>`
+      ).join('');
+      return `
+        <div class="media-item" style="flex-direction:column;align-items:stretch;gap:6px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="media-item-name">${anim.id}</span>
+            <span style="font-size:10px;color:#555">${fc} frame${fc>1?'s':''} · ${anim.fps} fps</span>
+            <div class="media-item-btns">
+              <button onclick="mediaAddAnimFrame('${anim.id}')" title="Ajouter frame">+</button>
+              <button onclick="mediaAssignAnimToNode('${anim.id}')" style="color:#98c379;border-color:#98c37966" title="Assigner au nœud">▶</button>
+              <button onclick="mediaDeleteAnim('${anim.id}')" style="color:#e06c75;border-color:#e06c7566">✕</button>
+            </div>
+          </div>
+          <div class="media-anim-frames">${frames}</div>
+        </div>`;
+    }).join('');
+    content = `<div class="media-section-title" style="font-size:10px;color:#555;margin-top:2px">INTÉGRÉES</div>
+      ${builtinItems}
+      <div class="media-section-title" style="font-size:10px;color:#555;margin-top:6px">SÉQUENCES BITMAP</div>
+      ${customItems || '<div class="media-empty">Aucune séquence</div>'}
+      <button onclick="mediaNewAnim()" class="add-choice-btn">+ Nouvelle séquence</button>`;
+
+  } else {
+    content = GAMES.map(g => `
+      <div class="media-game-item">
+        <span class="media-game-badge">${g.emoji}</span>
+        <div class="media-game-info">
+          <strong>${g.name}</strong>
+          <span>${g.desc}</span>
+        </div>
+        <button onclick="mediaAssignGame('${g.id}')" style="color:#c678dd;border-color:#c678dd66;flex-shrink:0">▶ Assigner</button>
+      </div>`).join('');
+  }
+
+  panel.innerHTML = `<div class="media-tabs">${tabs}</div><div style="display:flex;flex-direction:column;gap:8px">${content}</div>`;
+
+  if (activeMediaSubTab === 'images') {
+    mediaLib.images.forEach(img => {
+      const c = panel.querySelector(`canvas[data-imgid="${img.id}"]`);
+      if (c) bmpDrawToCanvas(img.bitmap, c);
+    });
+  } else if (activeMediaSubTab === 'animations') {
+    mediaLib.animations.forEach(anim => {
+      anim.frames.forEach((f, fi) => {
+        const c = panel.querySelector(`canvas[data-animid="${anim.id}"][data-fi="${fi}"]`);
+        if (c) bmpDrawToCanvas(f, c);
+      });
+    });
+  }
+}
+
+// ── Images ──
+function mediaNewImage() {
+  const raw = prompt('Nom de l\'image (ex: LOGO, TITRE) :', 'IMAGE_' + (mediaLib.images.length + 1));
+  if (!raw) return;
+  const id = raw.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+  if (mediaLib.images.find(i => i.id === id)) { alert('Nom déjà utilisé.'); return; }
+  mediaLib.images.push({ id, bitmap: newBitmap() });
+  autoSave(); renderMediaPanel();
+  mediaEditImage(id);
+}
+
+function mediaEditImage(id) {
+  const img = mediaLib.images.find(i => i.id === id); if (!img) return;
+  bmpTarget = { type: 'lib-image', id };
+  bmpBuffer = [...img.bitmap];
+  bmpTool = 'draw';
+  const r = document.querySelector('input[name="bmp-tool"][value="draw"]'); if (r) r.checked = true;
+  bmpRedraw();
+  document.getElementById('bitmap-modal').classList.add('open');
+}
+
+function mediaAssignToNode(id) {
+  if (!selectedId) { alert('Sélectionne d\'abord un nœud sur le canvas.'); return; }
+  const n = nodeById(selectedId);
+  const img = mediaLib.images.find(i => i.id === id);
+  if (!n || !img) return;
+  n.bitmapRef = id; n.bitmap = [...img.bitmap];
+  renderNodes(); renderEditPanel(); autoSave();
+  saveIndicator('✓ Image "' + id + '" assignée à ' + selectedId);
+}
+
+function mediaRenameImage(oldId) {
+  const raw = prompt('Nouveau nom pour "' + oldId + '" :', oldId);
+  if (!raw || raw === oldId) return;
+  const newId = raw.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+  if (mediaLib.images.find(i => i.id === newId)) { alert('Nom "' + newId + '" déjà utilisé.'); return; }
+  const img = mediaLib.images.find(i => i.id === oldId); if (!img) return;
+  img.id = newId;
+  nodes.forEach(n => { if (n.bitmapRef === oldId) n.bitmapRef = newId; });
+  autoSave(); renderMediaPanel();
+}
+
+function mediaDeleteImage(id) {
+  if (!confirm('Supprimer l\'image "' + id + '" de la bibliothèque ?')) return;
+  mediaLib.images = mediaLib.images.filter(i => i.id !== id);
+  nodes.forEach(n => { if (n.bitmapRef === id) n.bitmapRef = null; });
+  autoSave(); renderMediaPanel();
+}
+
+// ── Animations ──
+function mediaNewAnim() {
+  const raw = prompt('Nom de l\'animation (ex: INTRO) :', 'ANIM_' + (mediaLib.animations.length + 1));
+  if (!raw) return;
+  const id = raw.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+  if (mediaLib.animations.find(a => a.id === id)) { alert('Nom déjà utilisé.'); return; }
+  mediaLib.animations.push({ id, fps: 8, frames: [newBitmap()] });
+  autoSave(); renderMediaPanel();
+  mediaEditAnimFrame(id, 0);
+}
+
+function mediaEditAnimFrame(animId, fi) {
+  const anim = mediaLib.animations.find(a => a.id === animId); if (!anim) return;
+  bmpTarget = { type: 'lib-anim', id: animId, frameIdx: fi };
+  bmpBuffer = [...anim.frames[fi]];
+  bmpTool = 'draw';
+  const r = document.querySelector('input[name="bmp-tool"][value="draw"]'); if (r) r.checked = true;
+  bmpRedraw();
+  document.getElementById('bitmap-modal').classList.add('open');
+}
+
+function mediaAddAnimFrame(animId) {
+  const anim = mediaLib.animations.find(a => a.id === animId); if (!anim) return;
+  anim.frames.push(newBitmap());
+  autoSave(); renderMediaPanel();
+  mediaEditAnimFrame(animId, anim.frames.length - 1);
+}
+
+function mediaAssignAnimToNode(animId) {
+  if (!selectedId) { alert('Sélectionne d\'abord un nœud sur le canvas.'); return; }
+  const n = nodeById(selectedId); if (!n) return;
+  n.animRef = animId;
+  renderNodes(); renderEditPanel(); autoSave();
+  saveIndicator('✓ Animation "' + animId + '" assignée à ' + selectedId);
+}
+
+function mediaDeleteAnim(id) {
+  if (!confirm('Supprimer l\'animation "' + id + '" ?')) return;
+  mediaLib.animations = mediaLib.animations.filter(a => a.id !== id);
+  nodes.forEach(n => { if (n.animRef === id) n.animRef = null; });
+  autoSave(); renderMediaPanel();
+}
+
+// ── Jeux ──
+function mediaAssignGame(type) {
+  if (!selectedId) { alert('Sélectionne d\'abord un nœud sur le canvas.'); return; }
+  const n = nodeById(selectedId); if (!n) return;
+  n.gameType = type;
+  n.isPong = (type === 'PONG');
+  n.isEnd = false;
+  n.choices = [
+    { label: 'Gagnant',     to: '', msg: '' },
+    { label: 'Perdant',     to: '', msg: '' },
+    { label: 'Recommencer', to: '' }
+  ];
+  renderNodes(); renderEditPanel(); autoSave();
+  const gi = gameInfo(type);
+  saveIndicator('✓ ' + gi.emoji + ' ' + gi.name + ' assigné à ' + selectedId);
+}
+
+function mediaRemoveGame() {
+  if (!selectedId) return;
+  const n = nodeById(selectedId); if (!n) return;
+  n.gameType = null; n.isPong = false;
+  renderNodes(); renderEditPanel(); autoSave();
+}
+
+function mediaAssignBuiltinAnim(id) {
+  if (!selectedId) { alert('Sélectionne d\'abord un nœud sur le canvas.'); return; }
+  const n = nodeById(selectedId); if (!n) return;
+  n.builtinAnim = id;
+  n.gameType = null; n.isPong = false;
+  renderNodes(); renderEditPanel(); autoSave();
+  const ai = builtinAnimInfo(id);
+  saveIndicator('✓ ' + ai.emoji + ' ' + ai.name + ' assignée à ' + selectedId);
+}
+
+function mediaRemoveBuiltinAnim() {
+  if (!selectedId) return;
+  const n = nodeById(selectedId); if (!n) return;
+  n.builtinAnim = null;
+  renderNodes(); renderEditPanel(); autoSave();
+}
+
+// ══════════════════════════════════════════════
+//  RENDU
+// ══════════════════════════════════════════════
+let selectedId = null;
+const canvas   = document.getElementById('canvas');
+const svgLayer = document.getElementById('svg-layer');
+
+function allIds() { return nodes.map(n => n.id); }
+function nodeById(id) { return nodes.find(n => n.id === id); }
+
+function renderAll() {
+  renderNodes();
+  renderArrows();
+}
+
+function renderNodes() {
+  canvas.innerHTML = '';
+  nodes.forEach(n => {
+    const el = document.createElement('div');
+    const gt = nodeGameType(n);
+    const ba = nodeBuiltinAnim(n);
+    el.className = 'node' + (n.isEnd ? ' is-end' : '') + (gt ? ' is-pong' : '') + (ba ? ' is-anim' : '') + (n.aDevelopper ? ' is-draft' : '') + (n.id === selectedId ? ' selected' : '');
+    el.id = 'node-' + n.id;
+    el.dataset.id = n.id;
+    el.style.left = n.x + 'px';
+    el.style.top  = n.y + 'px';
+
+    let inner = `<div class="node-header">
+      <span class="node-title">${n.id}</span>
+    </div>`;
+
+    if (n.aDevelopper) inner += `<div class="node-draft-badge">✏ à développer</div>`;
+    if (n.bitmap)      inner += `<canvas class="node-bmp-thumb" width="128" height="32" data-nid="${n.id}"></canvas>`;
+    if (gt) {
+      const gi = gameInfo(gt);
+      inner += `<div class="node-pong-badge">${gi.emoji} ${gi.name}</div>`;
+      const gIcons = ['🏆','💀','🔄'], gColors = ['#98c379','#e06c75','#e5c07b'];
+      if (n.choices.length) {
+        inner += `<div class="node-choices">` + n.choices.map((c, i) =>
+          `<div class="choice-pill" style="color:${gColors[i]||'#aaa'}">${gIcons[i]||''} ${c.label}</div>`
+        ).join('') + `</div>`;
+      }
+    } else if (ba) {
+      const ai = builtinAnimInfo(ba);
+      inner += `<div class="node-anim-badge">${ai.emoji} ${ai.name}</div>`;
+    } else if (n.isEnd) {
+      inner += `<div class="node-endmsg">"${n.endMsg || '…'}"</div>`;
+    } else {
+      if (n.choices.length) {
+        inner += `<div class="node-choices">` + n.choices.map(c =>
+          `<div class="choice-pill">${c.label}</div>`).join('') + `</div>`;
+      }
+    }
+    el.innerHTML = inner;
+    if (n.bitmap) {
+      const thumb = el.querySelector('.node-bmp-thumb');
+      if (thumb) bmpDrawToCanvas(n.bitmap, thumb);
+    }
+    makeDraggable(el, n);
+    el.addEventListener('click', e => { e.stopPropagation(); selectNode(n.id); });
+    canvas.appendChild(el);
+  });
+}
+
+function renderArrows() {
+  svgLayer.innerHTML = '';
+  const colors = ['#61afef','#e5c07b','#98c379','#c678dd','#e06c75'];
+  nodes.forEach(n => {
+    n.choices.forEach((c, ci) => {
+      const target = nodeById(c.to);
+      if (!target) return;
+      const sx = n.x + 170;
+      const sy = n.y + 30 + ci * 16;
+      const tx = target.x;
+      const ty = target.y + 20;
+      const mx = (sx + tx) / 2;
+      const color = colors[ci % colors.length];
+      const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+      path.setAttribute('d', `M${sx},${sy} C${mx},${sy} ${mx},${ty} ${tx},${ty}`);
+      path.setAttribute('stroke', color);
+      path.setAttribute('stroke-width', '1.5');
+      path.setAttribute('fill', 'none');
+      path.setAttribute('opacity', '0.6');
+      path.setAttribute('marker-end', `url(#arr-${ci})`);
+      svgLayer.appendChild(path);
+    });
+  });
+  // Arrowhead markers
+  const defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
+  ['#61afef','#e5c07b','#98c379','#c678dd','#e06c75'].forEach((color, i) => {
+    const m = document.createElementNS('http://www.w3.org/2000/svg','marker');
+    m.setAttribute('id', 'arr-' + i);
+    m.setAttribute('markerWidth','6'); m.setAttribute('markerHeight','6');
+    m.setAttribute('refX','5'); m.setAttribute('refY','3');
+    m.setAttribute('orient','auto');
+    const poly = document.createElementNS('http://www.w3.org/2000/svg','polygon');
+    poly.setAttribute('points','0 0, 6 3, 0 6');
+    poly.setAttribute('fill', color);
+    m.appendChild(poly);
+    defs.appendChild(m);
+  });
+  svgLayer.insertBefore(defs, svgLayer.firstChild);
+}
+
+// ══════════════════════════════════════════════
+//  DRAG
+// ══════════════════════════════════════════════
+function makeDraggable(el, nodeData) {
+  let ox, oy, dragging = false;
+  el.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    dragging = true;
+    ox = e.clientX - nodeData.x;
+    oy = e.clientY - nodeData.y;
+    el.classList.add('active');
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    nodeData.x = Math.max(0, e.clientX - ox);
+    nodeData.y = Math.max(0, e.clientY - oy);
+    el.style.left = nodeData.x + 'px';
+    el.style.top  = nodeData.y + 'px';
+    renderArrows();
+  });
+  window.addEventListener('mouseup', () => {
+    if (dragging) { dragging = false; el.classList.remove('active'); autoSave(); }
+  });
+}
+
+// ══════════════════════════════════════════════
+//  SÉLECTION & ÉDITION
+// ══════════════════════════════════════════════
+function selectNode(id) {
+  selectedId = id;
+  renderNodes();
+  renderEditPanel();
+}
+
+canvas.addEventListener('click', () => { selectedId = null; renderNodes(); renderEditPanel(); });
+
+function renderEditPanel() {
+  const hint = document.getElementById('edit-hint');
+  const form = document.getElementById('edit-form');
+  document.getElementById('node-action-row').style.display =
+    (selectedId && activePanel === 'node') ? 'flex' : 'none';
+  if (activePanel !== 'node') return;
+  if (!selectedId) {
+    hint.style.display = ''; form.style.display = 'none'; return;
+  }
+  const n = nodeById(selectedId);
+  hint.style.display = 'none'; form.style.display = 'flex';
+
+  form.innerHTML = `
+    <div>
+      <div class="field-label">Identifiant (unique)</div>
+      <input type="text" id="f-id" value="${n.id}" onchange="renameId(this.value)">
+    </div>
+    ${nodeGameType(n) ? (() => {
+      const gi = gameInfo(nodeGameType(n));
+      while (n.choices.length < 3) n.choices.push({ label: ['Gagnant','Perdant','Recommencer'][n.choices.length], to: '' });
+      const ids = allIds();
+      const outcomes = [
+        { label: '🏆 Gagnant',     color: '#98c379', idx: 0 },
+        { label: '💀 Perdant',     color: '#e06c75', idx: 1 },
+        { label: '🔄 Recommencer', color: '#e5c07b', idx: 2 }
+      ];
+      return `<div style="color:#c678dd;font-size:12px;padding:6px 0;display:flex;flex-direction:column;gap:6px">
+        <div>${gi.emoji} <strong>${gi.name}</strong><br><span style="color:#666;font-size:11px">${gi.desc}</span></div>
+        <button onclick="mediaRemoveGame()" style="color:#e06c75;border-color:#5a2a2a;background:#3a1a1a;font-size:11px">✕ Retirer le jeu</button>
+      </div>
+      <div class="section-title">Sorties du jeu</div>
+      ${outcomes.map(o => {
+        const c = n.choices[o.idx];
+        return `<div class="choice-block">
+          <div style="font-size:11px;color:${o.color};padding:2px 0">${o.label}</div>
+          <div class="row">
+            <select onchange="updateChoice(${o.idx},'to',this.value)">
+              <option value="">— non relié —</option>
+              ${ids.map(id => `<option value="${id}" ${c.to===id?'selected':''}>${id}</option>`).join('')}
+            </select>
+          </div>
+          ${o.idx < 2 ? `<input type="text" placeholder="Message affiché..." value="${esc(c.msg||'')}" oninput="updateChoice(${o.idx},'msg',this.value)" style="font-size:11px">` : ''}
+        </div>`;
+      }).join('')}`;
+    })() : nodeBuiltinAnim(n) ? (() => { const ai = builtinAnimInfo(nodeBuiltinAnim(n)); return `<div style="color:#61afef;font-size:12px;padding:6px 0;display:flex;flex-direction:column;gap:6px">
+      <div>${ai.emoji} <strong>${ai.name}</strong><br><span style="color:#666;font-size:11px">${ai.desc}</span></div>
+      <button onclick="mediaRemoveBuiltinAnim()" style="color:#e06c75;border-color:#5a2a2a;background:#3a1a1a;font-size:11px">✕ Retirer l'animation</button>
+    </div>`; })() : `
+    <div>
+      <div class="field-label">Texte narratif</div>
+      <textarea id="f-text" oninput="updateField('text',this.value)">${esc(n.text)}</textarea>
+    </div>
+    <div class="checkbox-row">
+      <input type="checkbox" id="f-isend" ${n.isEnd?'checked':''} onchange="updateField('isEnd',this.checked)">
+      <label for="f-isend">Nœud de fin</label>
+    </div>
+    <div class="checkbox-row">
+      <input type="checkbox" id="f-draft" ${n.aDevelopper?'checked':''} onchange="updateField('aDevelopper',this.checked)">
+      <label for="f-draft" style="color:#e5c07b">✏ À développer</label>
+    </div>
+    <div class="section-title">Image</div>
+    <div id="bmp-preview-box">
+      ${n.bitmap
+        ? `<canvas id="bmp-preview" width="128" height="32"></canvas>`
+        : `<div style="color:#444;font-size:11px;padding:6px 0;text-align:center">Aucune image</div>`}
+    </div>
+    <div style="display:flex;gap:6px">
+      <button style="flex:1" onclick="openBitmapEditor('${n.id}')">✎ Éditer l'image</button>
+      ${n.bitmap ? `<button onclick="bmpRemove()" style="color:#e06c75;border-color:#5a2a2a;background:#3a1a1a">✕</button>` : ''}
+    </div>
+    ${n.isEnd ? `<div>
+      <div class="field-label">Message final (épigraphe)</div>
+      <input type="text" id="f-endmsg" value="${esc(n.endMsg)}" oninput="updateField('endMsg',this.value)">
+    </div>` : `
+    <div class="section-title">Choix</div>
+    <div id="choices-list">${renderChoicesForm(n)}</div>
+    <button class="add-choice-btn" onclick="addChoice()">+ Ajouter un choix</button>
+    `}
+    `}
+  `;
+  const prev = document.getElementById('bmp-preview');
+  if (prev && n.bitmap) bmpDrawToCanvas(n.bitmap, prev);
+}
+
+function renderChoicesForm(n) {
+  const ids = allIds();
+  return n.choices.map((c, i) => `
+    <div class="choice-block">
+      <div class="row">
+        <div class="choice-arrows">
+          <button onclick="moveChoice(${i},-1)" ${i===0?'disabled':''}>▲</button>
+          <button onclick="moveChoice(${i}, 1)" ${i===n.choices.length-1?'disabled':''}>▼</button>
+        </div>
+        <input type="text" value="${esc(c.label)}" placeholder="Texte du choix"
+          oninput="updateChoice(${i},'label',this.value)">
+        <button class="del-choice" onclick="removeChoice(${i})">✕</button>
+      </div>
+      <div class="row">
+        <select onchange="updateChoice(${i},'to',this.value)">
+          <option value="" ${!c.to?'selected':''}>— non relié —</option>
+          ${ids.map(id => `<option value="${id}" ${c.to===id?'selected':''}>${id}</option>`).join('')}
+        </select>
+      </div>
+    </div>`).join('');
+}
+
+function moveChoice(i, dir) {
+  const n = nodeById(selectedId); if (!n) return;
+  const j = i + dir;
+  if (j < 0 || j >= n.choices.length) return;
+  [n.choices[i], n.choices[j]] = [n.choices[j], n.choices[i]];
+  renderEditPanel(); renderNodes(); renderArrows(); autoSave();
+}
+
+function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+
+function updateField(field, value) {
+  const n = nodeById(selectedId); if (!n) return;
+  n[field] = value;
+  if (field === 'isEnd') renderEditPanel();
+  renderNodes(); renderArrows(); autoSave();
+}
+
+function renameId(newId) {
+  newId = newId.trim().replace(/\s+/g,'_').toUpperCase();
+  if (!newId || nodeById(newId)) return;
+  nodes.forEach(n => n.choices.forEach(c => { if (c.to === selectedId) c.to = newId; }));
+  nodeById(selectedId).id = newId;
+  selectedId = newId;
+  renderAll(); renderEditPanel(); autoSave();
+}
+
+function updateChoice(i, field, value) {
+  const n = nodeById(selectedId); if (!n) return;
+  n.choices[i][field] = value;
+  renderNodes(); renderArrows(); autoSave();
+}
+
+function addChoice() {
+  const n = nodeById(selectedId); if (!n || n.choices.length >= 3) return;
+  n.choices.push({ label: 'Nouveau choix', to: '' });
+  renderEditPanel(); renderNodes(); renderArrows(); autoSave();
+}
+
+function removeChoice(i) {
+  const n = nodeById(selectedId); if (!n) return;
+  n.choices.splice(i, 1);
+  renderEditPanel(); renderNodes(); renderArrows(); autoSave();
+}
+
+// ══════════════════════════════════════════════
+//  AJOUTER / SUPPRIMER NŒUD
+// ══════════════════════════════════════════════
+let _uidCounter = 114;
+function addNode() {
+  const id = 'NOEUD_' + (++_uidCounter);
+  const wrapper = document.getElementById('canvas-wrapper');
+  nodes.push({ id, title:'NOUVEAU', text:'', choices:[], isEnd:false, endMsg:'', isPong:false, gameType:null, aDevelopper:true, bitmap:null, winMsg:'', loseMsg:'',
+    x: wrapper.scrollLeft + wrapper.clientWidth / 2 - 85,
+    y: wrapper.scrollTop  + wrapper.clientHeight / 2 - 40 });
+  renderAll(); selectNode(id); autoSave();
+}
+
+function duplicateSelected() {
+  if (!selectedId) return;
+  const src = nodeById(selectedId);
+  const id = src.id + '_COPIE_' + (++_uidCounter);
+  const copy = JSON.parse(JSON.stringify(src));
+  copy.id = id;
+  copy.x += 200; copy.y += 40;
+  copy.aDevelopper = true;
+  nodes.push(copy);
+  renderAll(); selectNode(id); autoSave();
+}
+
+function deleteSelected() {
+  if (!selectedId) return;
+  if (!confirm(`Supprimer le nœud "${selectedId}" ?`)) return;
+  nodes = nodes.filter(n => n.id !== selectedId);
+  nodes.forEach(n => n.choices = n.choices.filter(c => nodeById(c.to)));
+  selectedId = null; renderAll(); renderEditPanel(); autoSave();
+}
+
+// ══════════════════════════════════════════════
+//  AUTO-LAYOUT (arbre top-down)
+// ══════════════════════════════════════════════
+function autoLayout() {
+  const W = 190, H = 130;
+  const level = {}, visited = new Set();
+  const queue = [{ id: nodes[0].id, depth: 0 }];
+  while (queue.length) {
+    const { id, depth } = queue.shift();
+    if (visited.has(id)) continue;
+    visited.add(id); level[id] = depth;
+    const n = nodeById(id);
+    if (n) n.choices.forEach(c => { if (!visited.has(c.to)) queue.push({ id: c.to, depth: depth+1 }); });
+  }
+  // Place unvisited at level 99
+  nodes.forEach(n => { if (level[n.id] === undefined) level[n.id] = 99; });
+
+  const byLevel = {};
+  nodes.forEach(n => { const l = level[n.id]; (byLevel[l] = byLevel[l]||[]).push(n); });
+
+  Object.entries(byLevel).forEach(([l, ns]) => {
+    const totalW = ns.length * W;
+    ns.forEach((n, i) => {
+      n.x = 40 + i * W + (ns.length < 6 ? (600 - totalW/2) : 0);
+      n.y = 30 + parseInt(l) * H;
+    });
+  });
+  renderAll();
+}
+
+// ══════════════════════════════════════════════
+//  COPIER JSON
+// ══════════════════════════════════════════════
+function copyJson() {
+  const json = JSON.stringify({ nodes, mediaLib, _uidCounter }, null, 2);
+  navigator.clipboard.writeText(json).then(() => saveIndicator('✓ JSON copié dans le presse-papier'));
+}
+
+// ══════════════════════════════════════════════
+//  (supprimé : export Arduino intégré)
+// ══════════════════════════════════════════════
+
+
+// ══════════════════════════════════════════════
+//  SAUVEGARDE / CHARGEMENT
+// ══════════════════════════════════════════════
+const STORAGE_KEY = 'esp_story_nodes';
+
+function saveIndicator(msg) {
+  const el = document.getElementById('save-indicator');
+  el.textContent = msg;
+  setTimeout(() => el.textContent = '', 3000);
+}
+
+function saveToFile() {
+  const json = JSON.stringify({ nodes, mediaLib, _uidCounter }, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'histoire.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  localStorage.setItem(STORAGE_KEY, json);
+  saveIndicator('✓ Sauvegardé');
+}
+
+function loadFromFile() {
+  document.getElementById('file-input').click();
+}
+
+function onFileChosen(evt) {
+  const file = evt.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = JSON.parse(e.target.result);
+      nodes = data.nodes;
+      mediaLib = data.mediaLib || { images: [], animations: [] };
+      _uidCounter = data._uidCounter || 0;
+      localStorage.setItem(STORAGE_KEY, e.target.result);
+      selectedId = null;
+      renderAll(); renderEditPanel();
+      saveIndicator('✓ Chargé : ' + file.name);
+    } catch { alert('Fichier JSON invalide.'); }
+  };
+  reader.readAsText(file);
+  evt.target.value = '';
+}
+
+function autoSave() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ nodes, mediaLib, _uidCounter }));
+}
+
+// ══════════════════════════════════════════════
+//  BITMAP
+// ══════════════════════════════════════════════
+const BMP_W = 128, BMP_H = 32, BMP_BYTES = 512, BMP_SCALE = 4;
+
+function newBitmap() { return new Array(BMP_BYTES).fill(0); }
+
+function bmpGetPixel(bmp, x, y) {
+  return (bmp[y * 16 + (x >> 3)] >> (7 - (x & 7))) & 1;
+}
+function bmpSetPixel(bmp, x, y, val) {
+  const idx = y * 16 + (x >> 3), bit = 7 - (x & 7);
+  if (val) bmp[idx] |= (1 << bit); else bmp[idx] &= ~(1 << bit);
+}
+
+function bmpDrawToCanvas(bmp, canvas) {
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, BMP_W, BMP_H);
+  ctx.fillStyle = '#fff';
+  for (let y = 0; y < BMP_H; y++)
+    for (let x = 0; x < BMP_W; x++)
+      if (bmpGetPixel(bmp, x, y)) ctx.fillRect(x, y, 1, 1);
+}
+
+// ── Éditeur ──
+let bmpTarget = null; // { type:'node'|'lib-image'|'lib-anim', id, frameIdx? }
+let bmpEditNode = null, bmpBuffer = null, bmpIsDrawing = false, bmpTool = 'draw';
+
+function openBitmapEditor(nodeId) {
+  bmpTarget = { type: 'node', id: nodeId };
+  bmpEditNode = nodeId;
+  const n = nodeById(nodeId);
+  bmpBuffer = n.bitmap ? [...n.bitmap] : newBitmap();
+  bmpTool = 'draw';
+  const r = document.querySelector('input[name="bmp-tool"][value="draw"]');
+  if (r) r.checked = true;
+  bmpRedraw();
+  document.getElementById('bitmap-modal').classList.add('open');
+}
+
+function closeBitmap() {
+  document.getElementById('bitmap-modal').classList.remove('open');
+  bmpTarget = null; bmpEditNode = null; bmpBuffer = null; _bmpSrcCanvas = null;
+  const st = document.getElementById('bmp-src-status');
+  if (st) st.textContent = '— aucune source';
+}
+
+function bmpSave() {
+  if (!bmpTarget) return;
+  if (bmpTarget.type === 'node') {
+    const n = nodeById(bmpTarget.id); if (!n) return;
+    n.bitmap = [...bmpBuffer];
+    closeBitmap();
+    renderNodes(); renderEditPanel(); autoSave();
+  } else if (bmpTarget.type === 'lib-image') {
+    const img = mediaLib.images.find(i => i.id === bmpTarget.id); if (!img) return;
+    img.bitmap = [...bmpBuffer];
+    nodes.forEach(n => { if (n.bitmapRef === bmpTarget.id) n.bitmap = [...bmpBuffer]; });
+    closeBitmap();
+    renderNodes(); if (activePanel === 'media') renderMediaPanel(); autoSave();
+  } else if (bmpTarget.type === 'lib-anim') {
+    const anim = mediaLib.animations.find(a => a.id === bmpTarget.id); if (!anim) return;
+    anim.frames[bmpTarget.frameIdx] = [...bmpBuffer];
+    closeBitmap();
+    if (activePanel === 'media') renderMediaPanel(); autoSave();
+  }
+}
+
+function bmpRemove() {
+  const n = nodeById(selectedId); if (!n) return;
+  n.bitmap = null;
+  renderNodes(); renderEditPanel(); autoSave();
+}
+
+function bmpClear() {
+  _bmpSrcCanvas = null;
+  bmpImportSettings.flipH = false; bmpImportSettings.flipV = false; bmpImportSettings.rotate = 0;
+  _bmpUpdateXformButtons();
+  const st = document.getElementById('bmp-src-status');
+  if (st) { st.textContent = '— aucune source'; st.title = ''; }
+  bmpBuffer = newBitmap(); bmpRedraw();
+}
+function bmpInvert() {
+  // En mode source : toggle le checkbox inversion
+  if (_bmpSrcCanvas) {
+    bmpImportSettings.invert = !bmpImportSettings.invert;
+    const cb = document.getElementById('bmp-invert-cb'); if (cb) cb.checked = bmpImportSettings.invert;
+    _bmpApplyToSrc();
+  } else {
+    bmpBuffer = bmpBuffer.map(b => (~b) & 0xFF); bmpRedraw();
+  }
+}
+
+// Marque l'édition comme manuelle (uniquement sur dessin au pixel)
+function _bmpSetManual() {
+  _bmpSrcCanvas = null;
+  bmpImportSettings.flipH = false; bmpImportSettings.flipV = false; bmpImportSettings.rotate = 0;
+  const st = document.getElementById('bmp-src-status');
+  if (st) { st.textContent = '— édition manuelle'; st.title = ''; }
+  _bmpUpdateXformButtons();
+}
+
+function _bmpUpdateXformButtons() {
+  const fh = document.getElementById('xbtn-fh'), fv = document.getElementById('xbtn-fv');
+  if (fh) fh.classList.toggle('active-xform', !!bmpImportSettings.flipH);
+  if (fv) fv.classList.toggle('active-xform', !!bmpImportSettings.flipV);
+}
+
+// ── Helpers internes (appliqués au buffer) ──
+function _doFlipH(buf) {
+  const out = newBitmap();
+  for (let y=0;y<BMP_H;y++) for (let x=0;x<BMP_W;x++)
+    if (bmpGetPixel(buf,x,y)) bmpSetPixel(out,BMP_W-1-x,y,1);
+  return out;
+}
+function _doFlipV(buf) {
+  const out = newBitmap();
+  for (let y=0;y<BMP_H;y++) for (let x=0;x<BMP_W;x++)
+    if (bmpGetPixel(buf,x,y)) bmpSetPixel(out,x,BMP_H-1-y,1);
+  return out;
+}
+// Rotation par mapping inverse (itère les pixels destination)
+function _doRotate(buf, deg) {
+  const out = newBitmap();
+  for (let dy=0;dy<BMP_H;dy++) {
+    for (let dx=0;dx<BMP_W;dx++) {
+      let sx, sy;
+      if (deg===90) {
+        // 90° horaire : dest(dx,dy) ← src( dy*(W-1)/(H-1) , (H-1)*(1-dx/(W-1)) )
+        sx = Math.round(dy * (BMP_W-1) / (BMP_H-1));
+        sy = Math.round((BMP_H-1) * (1 - dx / (BMP_W-1)));
+      } else if (deg===270) {
+        // 90° anti-horaire : dest(dx,dy) ← src( (W-1)-dy*(W-1)/(H-1) , dx*(H-1)/(W-1) )
+        sx = Math.round((BMP_W-1) - dy * (BMP_W-1) / (BMP_H-1));
+        sy = Math.round(dx * (BMP_H-1) / (BMP_W-1));
+      } else {
+        // 180°
+        sx = BMP_W-1-dx; sy = BMP_H-1-dy;
+      }
+      if (sx>=0&&sx<BMP_W&&sy>=0&&sy<BMP_H&&bmpGetPixel(buf,sx,sy))
+        bmpSetPixel(out,dx,dy,1);
+    }
+  }
+  return out;
+}
+
+// ── Transformations (toolbar) ──
+// Si source active → toggle le réglage + re-apply. Sinon → direct sur buffer.
+function bmpFlipH() {
+  if (_bmpSrcCanvas) {
+    bmpImportSettings.flipH = !bmpImportSettings.flipH;
+    _bmpUpdateXformButtons(); _bmpApplyToSrc();
+  } else {
+    bmpBuffer = _doFlipH(bmpBuffer); bmpRedraw();
+  }
+}
+function bmpFlipV() {
+  if (_bmpSrcCanvas) {
+    bmpImportSettings.flipV = !bmpImportSettings.flipV;
+    _bmpUpdateXformButtons(); _bmpApplyToSrc();
+  } else {
+    bmpBuffer = _doFlipV(bmpBuffer); bmpRedraw();
+  }
+}
+function bmpRotate(deg) {
+  if (_bmpSrcCanvas) {
+    bmpImportSettings.rotate = (bmpImportSettings.rotate + deg) % 360;
+    _bmpApplyToSrc();
+  } else {
+    bmpBuffer = _doRotate(bmpBuffer, deg); bmpRedraw();
+  }
+}
+
+// ── Paramètres d'import ──
+let bmpImportSettings = {
+  threshold:128, dithering:'none', bgColor:'black', invert:false,
+  scale:'crop',
+  flipH:false, flipV:false, rotate:0,
+  cropOffsetX:0.5, cropOffsetY:0.5, cropZoom:100
+};
+let _bmpSrcCanvas = null; // source originale en pleine résolution (stockée pour re-apply)
+
+function bmpSyncSettings() {
+  const s = bmpImportSettings;
+  const bgEl = document.querySelector('input[name="bmp-bg"]:checked');
+  if (bgEl) s.bgColor = bgEl.value;
+  s.invert    = document.getElementById('bmp-invert-cb')?.checked   ?? false;
+  s.threshold = parseInt(document.getElementById('bmp-threshold')?.value || 128);
+  s.dithering = document.getElementById('bmp-dither')?.value  || 'none';
+  s.scale     = document.getElementById('bmp-scale')?.value   || 'crop';
+  s.cropOffsetX = parseInt(document.getElementById('bmp-crop-x')?.value ?? 50) / 100;
+  s.cropOffsetY = parseInt(document.getElementById('bmp-crop-y')?.value ?? 50) / 100;
+  s.cropZoom    = parseInt(document.getElementById('bmp-crop-zoom')?.value ?? 100);
+  const isCrop = s.scale === 'crop';
+  const cropEl = document.getElementById('bmp-crop-sliders');
+  if (cropEl) cropEl.style.display = isCrop ? 'flex' : 'none';
+  // Griser le seuil si Bayer (tramage géométrique, pas de seuil utile)
+  const thrEl = document.getElementById('bmp-threshold');
+  const thrRow = thrEl?.closest('.bmp-srow');
+  const isBayer = s.dithering === 'bayer';
+  if (thrEl) thrEl.disabled = isBayer;
+  if (thrRow) thrRow.style.opacity = isBayer ? '0.4' : '';
+  if (_bmpSrcCanvas) _bmpApplyToSrc();
+}
+
+function bmpResetSettings() {
+  bmpImportSettings = {
+    threshold:128, dithering:'none', bgColor:'black', invert:false,
+    scale:'crop',
+    flipH:false, flipV:false, rotate:0,
+    cropOffsetX:0.5, cropOffsetY:0.5, cropZoom:100
+  };
+  const bgEl = document.querySelector('input[name="bmp-bg"][value="black"]'); if (bgEl) bgEl.checked = true;
+  const invEl = document.getElementById('bmp-invert-cb'); if (invEl) invEl.checked = false;
+  const thrEl = document.getElementById('bmp-threshold'); if (thrEl) thrEl.value = 128;
+  const thrV  = document.getElementById('bmp-thr-val');   if (thrV)  thrV.textContent = '128';
+  const ditEl = document.getElementById('bmp-dither');    if (ditEl) ditEl.value = 'none';
+  const scEl  = document.getElementById('bmp-scale');     if (scEl)  scEl.value = 'crop';
+  const cxEl  = document.getElementById('bmp-crop-x');    if (cxEl)  cxEl.value = 50;
+  const cyEl  = document.getElementById('bmp-crop-y');    if (cyEl)  cyEl.value = 50;
+  const czEl  = document.getElementById('bmp-crop-zoom'); if (czEl)  czEl.value = 100;
+  const czVEl = document.getElementById('bmp-crop-zoom-val'); if (czVEl) czVEl.textContent = '100%';
+  _bmpUpdateXformButtons();
+  document.getElementById('bmp-crop-sliders').style.display = 'flex';
+  if (_bmpSrcCanvas) _bmpApplyToSrc();
+}
+
+// Re-applique tous les réglages à la source originale → mise à jour en temps réel
+function _bmpApplyToSrc() {
+  if (!_bmpSrcCanvas) return;
+  const s = bmpImportSettings;
+
+  // Rotation sur le canvas source (préserve le ratio avant mise à l'échelle)
+  let src = _bmpSrcCanvas;
+  if (s.rotate) {
+    const rad = s.rotate * Math.PI / 180;
+    const swap = s.rotate === 90 || s.rotate === 270;
+    const rw = swap ? _bmpSrcCanvas.height : _bmpSrcCanvas.width;
+    const rh = swap ? _bmpSrcCanvas.width  : _bmpSrcCanvas.height;
+    const rc = document.createElement('canvas'); rc.width = rw; rc.height = rh;
+    const rctx = rc.getContext('2d');
+    rctx.translate(rw / 2, rh / 2);
+    rctx.rotate(rad);
+    rctx.drawImage(_bmpSrcCanvas, -_bmpSrcCanvas.width / 2, -_bmpSrcCanvas.height / 2);
+    src = rc;
+  }
+  if (s.flipH) {
+    const fc = document.createElement('canvas'); fc.width = src.width; fc.height = src.height;
+    const fctx = fc.getContext('2d');
+    fctx.translate(src.width, 0); fctx.scale(-1, 1); fctx.drawImage(src, 0, 0);
+    src = fc;
+  }
+  if (s.flipV) {
+    const fc = document.createElement('canvas'); fc.width = src.width; fc.height = src.height;
+    const fctx = fc.getContext('2d');
+    fctx.translate(0, src.height); fctx.scale(1, -1); fctx.drawImage(src, 0, 0);
+    src = fc;
+  }
+
+  const sw = src.width, sh = src.height;
+  const c = document.createElement('canvas'); c.width = BMP_W; c.height = BMP_H;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = s.bgColor === 'white' ? '#fff' : '#000';
+  ctx.fillRect(0, 0, BMP_W, BMP_H);
+
+  if (s.scale === 'crop') {
+    const baseW = Math.min(sw, sh * 4);
+    const cropW = Math.max(4, Math.round(baseW * 100 / s.cropZoom));
+    const cropH = Math.max(1, Math.round(cropW / 4));
+    const srcX = s.cropOffsetX * (sw - cropW);
+    const srcY = s.cropOffsetY * (sh - cropH);
+    const clipX = Math.max(0, srcX), clipY = Math.max(0, srcY);
+    const clipW = Math.min(sw, srcX + cropW) - clipX;
+    const clipH = Math.min(sh, srcY + cropH) - clipY;
+    if (clipW > 0 && clipH > 0) {
+      const scH = BMP_W / cropW, scV = BMP_H / cropH;
+      ctx.drawImage(src, clipX, clipY, clipW, clipH,
+        Math.round((clipX - srcX) * scH), Math.round((clipY - srcY) * scV),
+        Math.round(clipW * scH), Math.round(clipH * scV));
+    }
+  } else {
+    let dx = 0, dy = 0, dw = BMP_W, dh = BMP_H;
+    if (s.scale === 'fit') {
+      const r = Math.min(BMP_W / sw, BMP_H / sh);
+      dw = Math.round(sw * r); dh = Math.round(sh * r);
+      dx = Math.round((BMP_W - dw) / 2); dy = Math.round((BMP_H - dh) / 2);
+    } else if (s.scale === 'fill') {
+      const r = Math.max(BMP_W / sw, BMP_H / sh);
+      dw = Math.round(sw * r); dh = Math.round(sh * r);
+      dx = Math.round((BMP_W - dw) / 2); dy = Math.round((BMP_H - dh) / 2);
+    }
+    ctx.drawImage(src, 0, 0, sw, sh, dx, dy, dw, dh);
+  }
+
+  // Luminance
+  const d = ctx.getImageData(0, 0, BMP_W, BMP_H).data;
+  const lum = new Float32Array(BMP_W * BMP_H);
+  for (let i = 0; i < BMP_W * BMP_H; i++) {
+    const p = i * 4;
+    let l = d[p] * 0.299 + d[p + 1] * 0.587 + d[p + 2] * 0.114;
+    if (s.invert) l = 255 - l;
+    lum[i] = l;
+  }
+
+  // Seuillage / tramage
+  const thr = s.threshold;
+  if (s.dithering === 'floyd')         bmpBuffer = applyFloydSteinberg(lum, thr);
+  else if (s.dithering === 'atkinson') bmpBuffer = applyAtkinson(lum, thr);
+  else if (s.dithering === 'bayer') {
+    bmpBuffer = newBitmap();
+    for (let y = 0; y < BMP_H; y++)
+      for (let x = 0; x < BMP_W; x++)
+        if (lum[y * BMP_W + x] > BAYER4[y % 4][x % 4] / 16 * 255)
+          bmpSetPixel(bmpBuffer, x, y, 1);
+  } else {
+    bmpBuffer = newBitmap();
+    for (let y = 0; y < BMP_H; y++)
+      for (let x = 0; x < BMP_W; x++)
+        if (lum[y * BMP_W + x] > thr) bmpSetPixel(bmpBuffer, x, y, 1);
+  }
+
+  bmpRedraw();
+}
+
+function bmpFromUrl() {
+  const url = document.getElementById('bmp-url-input').value.trim();
+  if (!url) return;
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    bmpSyncSettings();
+    if (!bmpBuffer) bmpBuffer = newBitmap();
+    _bmpSrcCanvas = document.createElement('canvas');
+    _bmpSrcCanvas.width  = img.naturalWidth;
+    _bmpSrcCanvas.height = img.naturalHeight;
+    _bmpSrcCanvas.getContext('2d').drawImage(img, 0, 0);
+    const st = document.getElementById('bmp-src-status');
+    if (st) { st.textContent = url.slice(0, 20); st.title = url; }
+    _bmpApplyToSrc();
+  };
+  img.onerror = () => alert('Impossible de charger l\'image (CORS ?)');
+  img.src = url;
+}
+
+// ── Dithering ──
+function applyFloydSteinberg(lum, thr) {
+  const err = Float32Array.from(lum), out = newBitmap();
+  for (let y = 0; y < BMP_H; y++) for (let x = 0; x < BMP_W; x++) {
+    const old = Math.max(0, Math.min(255, err[y*BMP_W+x]));
+    const nv = old > thr ? 255 : 0, e = old - nv;
+    if (nv === 255) bmpSetPixel(out, x, y, 1);
+    if (x+1<BMP_W)            err[y*BMP_W+x+1]     += e*7/16;
+    if (x-1>=0&&y+1<BMP_H)    err[(y+1)*BMP_W+x-1] += e*3/16;
+    if (y+1<BMP_H)             err[(y+1)*BMP_W+x]   += e*5/16;
+    if (x+1<BMP_W&&y+1<BMP_H) err[(y+1)*BMP_W+x+1] += e*1/16;
+  }
+  return out;
+}
+function applyAtkinson(lum, thr) {
+  const err = Float32Array.from(lum), out = newBitmap();
+  for (let y = 0; y < BMP_H; y++) for (let x = 0; x < BMP_W; x++) {
+    const old = Math.max(0, Math.min(255, err[y*BMP_W+x]));
+    const nv = old > thr ? 255 : 0, e = (old - nv) / 8;
+    if (nv === 255) bmpSetPixel(out, x, y, 1);
+    [[1,0],[2,0],[-1,1],[0,1],[1,1],[0,2]].forEach(([dx,dy]) => {
+      const nx=x+dx,ny=y+dy; if(nx>=0&&nx<BMP_W&&ny>=0&&ny<BMP_H) err[ny*BMP_W+nx]+=e;
+    });
+  }
+  return out;
+}
+const BAYER4 = [[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]];
+
+function bmpRedraw() {
+  const canvas = document.getElementById('bmp-canvas'); if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, BMP_W * BMP_SCALE, BMP_H * BMP_SCALE);
+  ctx.fillStyle = '#fff';
+  for (let y = 0; y < BMP_H; y++)
+    for (let x = 0; x < BMP_W; x++)
+      if (bmpGetPixel(bmpBuffer, x, y))
+        ctx.fillRect(x * BMP_SCALE, y * BMP_SCALE, BMP_SCALE, BMP_SCALE);
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 0.5;
+  for (let x = 0; x <= BMP_W; x += 8) {
+    ctx.beginPath(); ctx.moveTo(x * BMP_SCALE, 0); ctx.lineTo(x * BMP_SCALE, BMP_H * BMP_SCALE); ctx.stroke();
+  }
+}
+
+function bmpCoord(e) {
+  const c = document.getElementById('bmp-canvas');
+  const r = c.getBoundingClientRect();
+  return { x: Math.floor((e.clientX - r.left) * BMP_W / r.width),
+           y: Math.floor((e.clientY - r.top)  * BMP_H / r.height) };
+}
+
+function bmpPaint(e, tool) {
+  const {x, y} = bmpCoord(e);
+  if (x < 0 || x >= BMP_W || y < 0 || y >= BMP_H) return;
+  if (_bmpSrcCanvas) _bmpSetManual(); // premier pixel dessiné déconnecte la source
+  bmpSetPixel(bmpBuffer, x, y, tool === 'erase' ? 0 : 1);
+  bmpRedraw();
+}
+
+function initBmpCanvas() {
+  const c = document.getElementById('bmp-canvas'); if (!c) return;
+  c.addEventListener('mousedown', e => {
+    bmpIsDrawing = true;
+    bmpPaint(e, e.button === 2 ? 'erase' : bmpTool);
+    e.preventDefault();
+  });
+  c.addEventListener('mousemove', e => { if (bmpIsDrawing) bmpPaint(e, e.buttons === 2 ? 'erase' : bmpTool); });
+  c.addEventListener('contextmenu', e => e.preventDefault());
+  window.addEventListener('mouseup', () => bmpIsDrawing = false);
+  document.querySelectorAll('input[name="bmp-tool"]').forEach(r =>
+    r.addEventListener('change', e => bmpTool = e.target.value));
+}
+
+function bmpImport() { document.getElementById('bmp-file-input').click(); }
+function onBmpFileChosen(evt) {
+  const file = evt.target.files[0]; if (!file) return;
+  bmpSyncSettings();
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  img.onload = () => {
+    // Stocker la source originale pleine résolution pour re-apply en temps réel
+    _bmpSrcCanvas = document.createElement('canvas');
+    _bmpSrcCanvas.width  = img.naturalWidth;
+    _bmpSrcCanvas.height = img.naturalHeight;
+    _bmpSrcCanvas.getContext('2d').drawImage(img, 0, 0);
+    URL.revokeObjectURL(url);
+    // Afficher le nom dans le panneau
+    const st = document.getElementById('bmp-src-status');
+    if (st) st.textContent = file.name.slice(0, 20);
+    _bmpApplyToSrc(); // applique les réglages courants
+  };
+  img.src = url; evt.target.value = '';
+}
+
+// ══════════════════════════════════════════════
+//  SIMULATEUR
+// ══════════════════════════════════════════════
+let simNode = 0;
+let simMode = 'READ'; // READ | CHOOSE | END
+let simLines = [];
+let simViewOffset = 0;
+let simSelectedIdx = 0;
+let simPrevHighlight = null;
+let simOnBitmap = false;
+
+function simWrapText(text) {
+  const W = 21, lines = [];
+  let i = 0;
+  while (i < text.length && lines.length < 10) {
+    let end = i + W;
+    if (end >= text.length) { lines.push(text.slice(i)); break; }
+    let brk = end;
+    while (brk > i && text[brk] !== ' ') brk--;
+    if (brk === i) brk = end;
+    lines.push(text.slice(i, brk));
+    i = brk + (text[brk] === ' ' ? 1 : 0);
+  }
+  return lines;
+}
+
+function simHighlight(idx) {
+  if (simPrevHighlight !== null) {
+    const el = document.getElementById('node-' + nodes[simPrevHighlight]?.id);
+    if (el) el.classList.remove('sim-active');
+  }
+  const el = document.getElementById('node-' + nodes[idx]?.id);
+  if (el) {
+    el.classList.add('sim-active');
+    el.scrollIntoView({ behavior:'smooth', block:'nearest' });
+  }
+  simPrevHighlight = idx;
+}
+
+function simEnterNode() {
+  simViewOffset = 0; simSelectedIdx = 0;
+  const node = nodes[simNode];
+  if (!node) return;
+  simHighlight(simNode);
+  document.getElementById('sim-node-name').textContent = node.id;
+  simOnBitmap = !!node.bitmap;
+
+  const gt = nodeGameType(node);
+  const ba = nodeBuiltinAnim(node);
+  if (gt) {
+    const gi = gameInfo(gt);
+    simLines = [`[ ${gi.emoji} ${gi.name} ]`, gi.desc.slice(0, 42), '', 'OK → continuer'];
+    simMode = 'END'; simOnBitmap = false;
+  } else if (ba) {
+    const ai = builtinAnimInfo(ba);
+    simLines = [`[ ${ai.emoji} ${ai.name} ]`, ai.desc.slice(0, 42), '', 'OK → continuer'];
+    simMode = 'END'; simOnBitmap = false;
+  } else {
+    simLines = simWrapText(node.text || '');
+    if (node.isEnd) {
+      if (node.endMsg) simLines.push(node.endMsg);
+      simLines.push('[ OK ] Recommencer');
+      simMode = 'END';
+    } else {
+      simMode = 'READ';
+    }
+  }
+  simDraw();
+}
+
+function simDraw() {
+  const node = nodes[simNode];
+  const bmpCanvas = document.getElementById('sim-bmp-view');
+  const screen    = document.getElementById('sim-screen');
+  if (simOnBitmap && node.bitmap) {
+    bmpCanvas.style.display = 'block'; screen.style.display = 'none';
+    bmpDrawToCanvas(node.bitmap, bmpCanvas);
+    document.getElementById('sim-mode').textContent = 'IMAGE — ↓ pour lire le texte';
+    return;
+  }
+  bmpCanvas.style.display = 'none'; screen.style.display = 'flex';
+  const lines = ['', '', '', ''];
+
+  if (simMode === 'READ' || simMode === 'END') {
+    const maxOff = Math.max(0, simLines.length - 4);
+    for (let l = 0; l < 4; l++) {
+      const vl = simViewOffset + l;
+      if (vl < simLines.length) lines[l] = simLines[vl];
+    }
+    if (simLines.length > 4) {
+      const counter = `${simViewOffset + 1}/${maxOff + 1}`;
+      const base = lines[3].padEnd(21).slice(0, 21 - counter.length);
+      lines[3] = base + counter;
+    }
+  } else { // CHOOSE
+    const choice = node.choices[simSelectedIdx];
+    const wrapped = simWrapText('> ' + (choice?.label || ''));
+    lines[0] = wrapped[0] || '';
+    lines[1] = wrapped[1] || '';
+    if (!choice?.to) lines[2] = '  [non relie]';
+    const counter = `${simSelectedIdx + 1}/${node.choices.length}`;
+    lines[3] = ' '.repeat(Math.max(0, 21 - counter.length)) + counter;
+  }
+
+  screen.innerHTML = lines.map(l =>
+    `<div class="sim-line">${l.replace(/&/g,'&amp;').replace(/</g,'&lt;') || ' '}</div>`
+  ).join('');
+
+  const modeText = { READ:'LECTURE — tourne pour défiler, OK pour choisir', CHOOSE:'CHOIX — tourne pour changer, OK pour confirmer', END:'FIN — OK pour recommencer' };
+  document.getElementById('sim-mode').textContent = modeText[simMode] || '';
+}
+
+function simEncoder(dir) {
+  const node = nodes[simNode];
+  if (!node) return;
+  if (simOnBitmap) {
+    if (dir > 0) { simOnBitmap = false; simDraw(); }
+    return;
+  }
+  if (simMode === 'READ') {
+    const maxOff = Math.max(0, simLines.length - 4);
+    if (dir < 0 && simViewOffset === 0 && node.bitmap) { simOnBitmap = true; simDraw(); return; }
+    simViewOffset = Math.max(0, Math.min(maxOff, simViewOffset + dir));
+  } else if (simMode === 'CHOOSE') {
+    if (node.choices.length === 0) return;
+    simSelectedIdx = (simSelectedIdx + (dir > 0 ? 1 : -1) + node.choices.length) % node.choices.length;
+  }
+  simDraw();
+}
+
+function simButton() {
+  const node = nodes[simNode];
+  if (!node) return;
+
+  if (simMode === 'END' || nodeGameType(node) || nodeBuiltinAnim(node)) {
+    simNode = 0; simEnterNode(); return;
+  }
+  if (simMode === 'READ') {
+    if (node.choices.length === 0) return;
+    simMode = 'CHOOSE'; simSelectedIdx = 0; simDraw();
+  } else { // CHOOSE
+    const choice = node.choices[simSelectedIdx];
+    if (!choice) return;
+    if (!choice.to) { simDraw(); return; } // non relié : on reste
+    const idx = nodes.findIndex(n => n.id === choice.to);
+    if (idx === -1) return;
+    simNode = idx; simEnterNode();
+  }
+}
+
+function openSim() {
+  simNode = 0;
+  simEnterNode();
+  document.getElementById('sim-modal').classList.add('open');
+}
+
+function openSimFrom(nodeId) {
+  const idx = nodes.findIndex(n => n.id === nodeId);
+  if (idx === -1) return;
+  simNode = idx;
+  simEnterNode();
+  document.getElementById('sim-modal').classList.add('open');
+}
+
+function closeSim() {
+  document.getElementById('sim-modal').classList.remove('open');
+  if (simPrevHighlight !== null) {
+    const el = document.getElementById('node-' + nodes[simPrevHighlight]?.id);
+    if (el) el.classList.remove('sim-active');
+    simPrevHighlight = null;
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (!document.getElementById('sim-modal').classList.contains('open')) return;
+  if (['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)) return;
+  if (e.key === 'ArrowUp')   { e.preventDefault(); simEncoder(-1); }
+  if (e.key === 'ArrowDown') { e.preventDefault(); simEncoder(1); }
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); simButton(); }
+  if (e.key === 'Escape') closeSim();
+});
+
+// ══════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════
+const _saved = localStorage.getItem(STORAGE_KEY);
+if (_saved) {
+  try {
+    const data = JSON.parse(_saved);
+    nodes     = data.nodes     || [];
+    mediaLib  = data.mediaLib  || { images: [], animations: [] };
+    _uidCounter = data._uidCounter || 0;
+    saveIndicator('✓ Histoire restaurée depuis la dernière session');
+  } catch { /* localStorage corrompu, on démarre vide */ }
+}
+renderAll();
+initBmpCanvas();
+const _cw = document.getElementById('canvas-wrapper');
+_cw.scrollLeft = 2180 - _cw.clientWidth / 2 + 300;
+_cw.scrollTop  = 1700 - _cw.clientHeight / 2 + 100;
+</script>
+</body>
+</html>
