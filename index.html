@@ -709,30 +709,20 @@ function renderNodes() {
 
 function renderArrows() {
   svgLayer.innerHTML = '';
-  const colors = ['#61afef','#e5c07b','#98c379','#c678dd','#e06c75'];
-  nodes.forEach(n => {
-    n.choices.forEach((c, ci) => {
-      const target = nodeById(c.to);
-      if (!target) return;
-      const sx = n.x + 170;
-      const sy = n.y + 30 + ci * 16;
-      const tx = target.x;
-      const ty = target.y + 20;
-      const mx = (sx + tx) / 2;
-      const color = colors[ci % colors.length];
-      const path = document.createElementNS('http://www.w3.org/2000/svg','path');
-      path.setAttribute('d', `M${sx},${sy} C${mx},${sy} ${mx},${ty} ${tx},${ty}`);
-      path.setAttribute('stroke', color);
-      path.setAttribute('stroke-width', '1.5');
-      path.setAttribute('fill', 'none');
-      path.setAttribute('opacity', '0.6');
-      path.setAttribute('marker-end', `url(#arr-${ci})`);
-      svgLayer.appendChild(path);
-    });
-  });
-  // Arrowhead markers
+  // Couleurs + tirets + épaisseur différents pour chaque index de choix
+  // → lisible sans distinguer les couleurs
+  const styles = [
+    { color:'#88aaff', dash:'none',   width:2   },  // choix 1 — trait plein épais
+    { color:'#ffcc44', dash:'10,5',   width:1.5 },  // choix 2 — tirets longs
+    { color:'#88ddaa', dash:'3,5',    width:1.5 },  // choix 3 — pointillés
+    { color:'#dd88ff', dash:'10,4,3,4', width:1.5 },// choix 4 — tiret-point
+    { color:'#ff8888', dash:'6,3',    width:1.5 },  // choix 5 — tirets courts
+  ];
+  const labels = ['①','②','③','④','⑤'];
+
+  // Arrowhead markers (un par style)
   const defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
-  ['#61afef','#e5c07b','#98c379','#c678dd','#e06c75'].forEach((color, i) => {
+  styles.forEach((s, i) => {
     const m = document.createElementNS('http://www.w3.org/2000/svg','marker');
     m.setAttribute('id', 'arr-' + i);
     m.setAttribute('markerWidth','6'); m.setAttribute('markerHeight','6');
@@ -740,11 +730,56 @@ function renderArrows() {
     m.setAttribute('orient','auto');
     const poly = document.createElementNS('http://www.w3.org/2000/svg','polygon');
     poly.setAttribute('points','0 0, 6 3, 0 6');
-    poly.setAttribute('fill', color);
+    poly.setAttribute('fill', s.color);
     m.appendChild(poly);
     defs.appendChild(m);
   });
   svgLayer.insertBefore(defs, svgLayer.firstChild);
+
+  nodes.forEach(n => {
+    n.choices.forEach((c, ci) => {
+      const target = nodeById(c.to);
+      if (!target) return;
+      const s   = styles[ci % styles.length];
+      const sx  = n.x + 170;
+      const sy  = n.y + 30 + ci * 16;
+      const tx  = target.x;
+      const ty  = target.y + 20;
+      const mx  = (sx + tx) / 2;
+
+      const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+      const d = `M${sx},${sy} C${mx},${sy} ${mx},${ty} ${tx},${ty}`;
+      path.setAttribute('d', d);
+      path.setAttribute('stroke', s.color);
+      path.setAttribute('stroke-width', s.width);
+      path.setAttribute('stroke-dasharray', s.dash === 'none' ? '' : s.dash);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('opacity', '0.75');
+      path.setAttribute('marker-end', `url(#arr-${ci % styles.length})`);
+      svgLayer.appendChild(path);
+
+      // Numéro au milieu de la courbe
+      const lx = mx;
+      const ly = (sy + ty) / 2;
+      const bg = document.createElementNS('http://www.w3.org/2000/svg','circle');
+      bg.setAttribute('cx', lx); bg.setAttribute('cy', ly);
+      bg.setAttribute('r', '8');
+      bg.setAttribute('fill', '#12121f');
+      bg.setAttribute('stroke', s.color);
+      bg.setAttribute('stroke-width', '1');
+      bg.setAttribute('opacity', '0.85');
+      svgLayer.appendChild(bg);
+
+      const txt = document.createElementNS('http://www.w3.org/2000/svg','text');
+      txt.setAttribute('x', lx); txt.setAttribute('y', ly + 4);
+      txt.setAttribute('text-anchor', 'middle');
+      txt.setAttribute('font-size', '9');
+      txt.setAttribute('fill', s.color);
+      txt.setAttribute('font-family', 'monospace');
+      txt.textContent = labels[ci % labels.length];
+      svgLayer.appendChild(txt);
+    });
+  });
 }
 
 // ══════════════════════════════════════════════
